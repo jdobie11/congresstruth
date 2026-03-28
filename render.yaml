@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: congresstruth-api
+    runtime: ruby
+    buildCommand: bundle install
+    startCommand: bundle exec puma -C config/puma.rb
+    envVars:
+      - key: RAILS_ENV
+        value: production
+      - key: CONGRESS_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: FEC_API_KEY
+        value: DEMO_KEY
+      - key: SECRET_KEY_BASE
+        generateValue: true
+
+  - type: static
+    name: congresstruth-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
