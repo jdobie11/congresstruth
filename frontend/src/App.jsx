@@ -569,7 +569,12 @@ export default function App() {
               ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(5,68)}</div>
               : <div className="fin">
                   {votes.length===0&&!votesError&&selectedRep&&<div style={{color:"#666",fontSize:13}}>No vote records returned.</div>}
-                  {votes.map((v,i)=><VoteRow key={i} vote={v} onVote={handleVote}/>)}
+                  {votes.map((v) => {
+                    const voteKey = v.bill
+                      ? `${v.bill.type || "bill"}-${v.bill.number || "unknown"}`
+                      : `${v.rollNumber || "roll"}-${v.date || "unknown"}`;
+                    return <VoteRow key={voteKey} vote={v} onVote={handleVote} />;
+                  })}
                 </div>
             }
           </div>
