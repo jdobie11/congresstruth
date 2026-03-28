@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────
 // This is your Rails server. No API keys live here — they're safe in .env on the server.
-const API_BASE = "http://localhost:3000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 async function apiGet(path, params = {}) {
   const url = new URL(`${API_BASE}${path}`);
