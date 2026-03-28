@@ -12,6 +12,19 @@ Rails.application.routes.draw do
     # Executive orders (e.g. GET /api/orders?per_page=20)
     get "orders",             to: "orders#index"
 
+    # Supreme Court: current justices + recent SCOTUS cases (via Oyez API)
+    get "court/justices",     to: "court#justices"
+    get "court/cases",        to: "court#cases"
+
+    # Executive cabinet: Senate-confirmed nominations (via Congress.gov)
+    get "cabinet",            to: "cabinet#index"
+
+    # AI government Q&A (via Anthropic API)
+    post "ask",               to: "ask#create"
+
+    # Plain-language bill summary (via Anthropic API, cached permanently per bill)
+    post "summarize",         to: "summarize#create"
+
     # Health check
     get "ping",               to: "health#ping"
   end
