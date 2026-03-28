@@ -4,7 +4,6 @@ tmp/
 log/
 .bundle/
 vendor/bundle/
-Gemfile.lock
 storage/
 frontend/node_modules/
 frontend/dist/
