@@ -6,7 +6,7 @@ Bundler.require(*Rails.groups)
 
 module Congresstruth
   class Application < Rails::Application
-    config.load_defaults 7.1
+    config.load_defaults 8.0
     config.api_only = true
     config.cache_store = :memory_store, { size: 64.megabytes }
     config.middleware.insert_before 0, Rack::Cors do
