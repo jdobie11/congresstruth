@@ -19,12 +19,6 @@ Rails.application.routes.draw do
     # Executive cabinet: Senate-confirmed nominations (via Congress.gov)
     get "cabinet",            to: "cabinet#index"
 
-    # AI government Q&A (via Anthropic API)
-    post "ask",               to: "ask#create"
-
-    # Plain-language bill summary (via Anthropic API, cached permanently per bill)
-    post "summarize",         to: "summarize#create"
-
     # Health check
     get "ping",               to: "health#ping"
   end

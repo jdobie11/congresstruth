@@ -124,22 +124,13 @@ function RepCard({ rep, onClick, selected, alignScore }) {
 // ─── VOTE ROW ─────────────────────────────────────────────────────────────
 function VoteRow({ vote, onVote }) {
   const [userVote, setUserVote] = useState(null);
-  const [summary, setSummary]   = useState(null);
 
   const repVoteStr = vote.memberVotes?.votePosition||"—";
   const isYea = ["Yes","Yea","Aye"].includes(repVoteStr);
   const match = userVote===null ? null : (userVote==="yea")===isYea;
   const handle = (v) => { setUserVote(v); onVote?.(v, isYea?"yea":"nay"); };
-  const rawTitle = vote.bill?.title||vote.description||"—";
+  const title = vote.bill?.title||vote.description||"—";
   const billId = vote.bill?`${(vote.bill.type||"").toUpperCase()} ${vote.bill.number}`:`Roll #${vote.rollNumber||"?"}`;
-
-  useEffect(() => {
-    if (!vote.bill?.title) return;
-    const id = `${vote.bill.type||""}${vote.bill.number||""}`;
-    apiPost("/summarize", { title: vote.bill.title, bill_id: id })
-      .then(d => { if (d.summary) setSummary(d.summary); })
-      .catch(() => {});
-  }, [vote.bill?.title]); // eslint-disable-line
 
   return (
     <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"16px 0"}}>
@@ -150,11 +141,7 @@ function VoteRow({ vote, onVote }) {
               padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billId}</span>
             <span style={{fontSize:11,color:"#555"}}>{vote.date||""}</span>
           </div>
-          {summary
-            ? <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:3}}>{summary}</div>
-            : <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{rawTitle.length>110?rawTitle.slice(0,110)+"…":rawTitle}</div>
-          }
-          {summary && <div style={{fontSize:11,color:"#555",lineHeight:1.4}}>{rawTitle.length>90?rawTitle.slice(0,90)+"…":rawTitle}</div>}
+          <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{title.length>110?title.slice(0,110)+"…":title}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
