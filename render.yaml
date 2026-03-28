@@ -9,8 +9,6 @@ services:
         value: production
       - key: CONGRESS_API_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
       - key: FEC_API_KEY
         value: DEMO_KEY
       - key: SECRET_KEY_BASE
