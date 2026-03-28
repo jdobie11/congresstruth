@@ -4,8 +4,10 @@ require "uri"
 
 class ApiService
   def self.get(base_url, path, params = {})
-    uri = URI("#{base_url}#{path}")
-    uri.query = URI.encode_www_form(params.reject { |_, v| v.nil? })
+   def self.get(base_url, path, params = {})
+     uri = URI("#{base_url}#{path}")
+     filtered = params.reject { |_, v| v.nil? }
+     uri.query = URI.encode_www_form(filtered) unless filtered.empty?
 
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = uri.scheme == "https"
