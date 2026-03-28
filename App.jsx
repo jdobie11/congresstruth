@@ -131,6 +131,7 @@ function VoteRow({ vote, onVote }) {
   const handle = (v) => { setUserVote(v); onVote?.(v, isYea?"yea":"nay"); };
   const title = vote.bill?.title||vote.description||"—";
   const billId = vote.bill?`${(vote.bill.type||"").toUpperCase()} ${vote.bill.number}`:`Roll #${vote.rollNumber||"?"}`;
+  const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(`Explain this US congressional bill in plain English. What does it actually do, who benefits, and who opposes it?\n\nBill: ${billId}\nTitle: ${title}`)}`;
 
   return (
     <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"16px 0"}}>
@@ -140,6 +141,11 @@ function VoteRow({ vote, onVote }) {
             <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",
               padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billId}</span>
             <span style={{fontSize:11,color:"#555"}}>{vote.date||""}</span>
+            <a href={claudeUrl} target="_blank" rel="noreferrer" style={{
+              fontSize:10,color:"#888",background:"rgba(255,255,255,0.05)",
+              border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,
+              padding:"2px 7px",textDecoration:"none",whiteSpace:"nowrap",
+            }}>Ask Claude →</a>
           </div>
           <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{title.length>110?title.slice(0,110)+"…":title}</div>
         </div>
