@@ -13,9 +13,23 @@ async function apiGet(path, params = {}) {
   return data;
 }
 
+async function apiPost(path, body = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+  return data;
+}
+
 // ─── UTILITIES ────────────────────────────────────────────────────────────
 const partyColor = (p) => p === "D" ? "#4a9eff" : p === "R" ? "#ff4a4a" : "#c084fc";
 const partyLabel = (p) => p === "D" ? "Democrat" : p === "R" ? "Republican" : p || "Independent";
+const parseName  = (desc) => desc ? desc.split(",")[0].trim() : "Unknown";
+const parseRole  = (desc) => { if (!desc) return ""; const m = desc.match(/to be (.+)/i); return m ? m[1].trim() : ""; };
+const PRESIDENT_PARTY = { "Ronald Reagan":"R","George H.W. Bush":"R","Bill Clinton":"D","George W. Bush":"R","Barack Obama":"D","Donald Trump":"R","Joe Biden":"D" };
 const fmt = (n) =>
   !n ? "—"
   : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
@@ -110,24 +124,37 @@ function RepCard({ rep, onClick, selected, alignScore }) {
 // ─── VOTE ROW ─────────────────────────────────────────────────────────────
 function VoteRow({ vote, onVote }) {
   const [userVote, setUserVote] = useState(null);
+  const [summary, setSummary]   = useState(null);
+
   const repVoteStr = vote.memberVotes?.votePosition||"—";
   const isYea = ["Yes","Yea","Aye"].includes(repVoteStr);
   const match = userVote===null ? null : (userVote==="yea")===isYea;
   const handle = (v) => { setUserVote(v); onVote?.(v, isYea?"yea":"nay"); };
-  const title = vote.bill?.title||vote.description||"—";
+  const rawTitle = vote.bill?.title||vote.description||"—";
   const billId = vote.bill?`${(vote.bill.type||"").toUpperCase()} ${vote.bill.number}`:`Roll #${vote.rollNumber||"?"}`;
+
+  useEffect(() => {
+    if (!vote.bill?.title) return;
+    const id = `${vote.bill.type||""}${vote.bill.number||""}`;
+    apiPost("/summarize", { title: vote.bill.title, bill_id: id })
+      .then(d => { if (d.summary) setSummary(d.summary); })
+      .catch(() => {});
+  }, [vote.bill?.title]); // eslint-disable-line
+
   return (
-    <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"14px 0"}}>
+    <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"16px 0"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
         <div style={{flex:1,minWidth:180}}>
-          <div style={{display:"flex",gap:7,marginBottom:4,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{display:"flex",gap:7,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",
               padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billId}</span>
             <span style={{fontSize:11,color:"#555"}}>{vote.date||""}</span>
           </div>
-          <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>
-            {title.length>110?title.slice(0,110)+"…":title}
-          </div>
+          {summary
+            ? <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:3}}>{summary}</div>
+            : <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{rawTitle.length>110?rawTitle.slice(0,110)+"…":rawTitle}</div>
+          }
+          {summary && <div style={{fontSize:11,color:"#555",lineHeight:1.4}}>{rawTitle.length>90?rawTitle.slice(0,90)+"…":rawTitle}</div>}
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -208,6 +235,67 @@ function OrderCard({ order }) {
   );
 }
 
+// ─── JUSTICE CARD ─────────────────────────────────────────────────────────
+function JusticeCard({ justice }) {
+  const scotusRole = (justice.roles||[]).filter(r=>r.institution_name?.includes("Supreme Court")).at(-1);
+  const name      = justice.name||"Unknown";
+  const roleTitle = scotusRole?.role_title||"Associate Justice";
+  const president = scotusRole?.appointing_president||"Unknown";
+  const yearStart = scotusRole?.date_start ? new Date(scotusRole.date_start*1000).getFullYear() : "—";
+  const party     = PRESIDENT_PARTY[president]||"I";
+  const isChief   = roleTitle.toLowerCase().includes("chief");
+  const initials  = name.split(" ").filter(w=>w&&/[A-Z]/.test(w[0])).map(w=>w[0]).join("").slice(0,2).toUpperCase()||"??";
+  return (
+    <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14}}>
+      <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,background:`linear-gradient(135deg,${partyColor(party)}33,${partyColor(party)}11)`,border:`2px solid ${partyColor(party)}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:partyColor(party),fontFamily:"'DM Mono',monospace"}}>{initials}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:14,color:"#f0f0f0",marginBottom:2,display:"flex",alignItems:"center",gap:7}}>
+          {name}
+          {isChief&&<span style={{fontSize:9,color:"#ffd84a",background:"rgba(255,216,74,0.12)",border:"1px solid rgba(255,216,74,0.25)",borderRadius:4,padding:"1px 6px",letterSpacing:"0.05em"}}>CHIEF</span>}
+        </div>
+        <div style={{fontSize:12,color:"#666"}}>Appointed by <span style={{color:partyColor(party)}}>{president}</span><span style={{color:"#444"}}> · {yearStart}</span></div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CASE CARD ────────────────────────────────────────────────────────────
+function CaseCard({ kase }) {
+  const [exp,setExp] = useState(false);
+  const decided = (kase.timeline||[]).find(t=>t.event==="Decided");
+  const decidedDate = decided?.dates?.[0] ? new Date(decided.dates[0]*1000).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : null;
+  const oyezUrl = (kase.href||"").replace("api.oyez.org","www.oyez.org");
+  return (
+    <div onClick={()=>setExp(!exp)} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"13px 17px",marginBottom:8,cursor:"pointer"}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,color:"#555",marginBottom:4,fontFamily:"'DM Mono',monospace"}}>{kase.docket_number}{decidedDate?` · Decided ${decidedDate}`:""}</div>
+          <div style={{fontWeight:600,fontSize:13,color:"#e0e0e0",lineHeight:1.4}}>{kase.name}</div>
+          {exp&&kase.description&&<div style={{fontSize:13,color:"#888",lineHeight:1.6,marginTop:8}}>{kase.description}</div>}
+          {exp&&oyezUrl&&<a href={oyezUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{display:"inline-block",marginTop:8,fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Full case on Oyez →</a>}
+        </div>
+        <div style={{color:"#555",fontSize:12,paddingTop:2,flexShrink:0}}>{exp?"▲":"▼"}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CABINET CARD ─────────────────────────────────────────────────────────
+function CabinetCard({ nomination }) {
+  const name = parseName(nomination.description);
+  const role = parseRole(nomination.description);
+  const org  = nomination.organization||"";
+  const date = nomination.receivedDate||"";
+  return (
+    <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px"}}>
+      <div style={{fontWeight:700,fontSize:14,color:"#f0f0f0",marginBottom:3}}>{name}</div>
+      <div style={{fontSize:13,color:"#4a9eff",marginBottom:org&&role?2:0}}>{role||org}</div>
+      {org&&role&&<div style={{fontSize:12,color:"#555",marginBottom:3}}>{org}</div>}
+      {date&&<div style={{fontSize:10,color:"#444",fontFamily:"'DM Mono',monospace",marginTop:4}}>CONFIRMED · {date}</div>}
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab,setTab]                 = useState("reps");
@@ -226,14 +314,33 @@ export default function App() {
   const [orders,setOrders]           = useState([]);
   const [ordersLoading,setOL]        = useState(false);
   const [ordersError,setOE]          = useState(null);
-  const [loaded,setLoaded]           = useState(false);
-  const [aligned,setAligned]         = useState(0);
-  const [diverged,setDiverged]       = useState(0);
+  const [justices,setJustices]         = useState([]);
+  const [justicesLoading,setJL]        = useState(false);
+  const [justicesError,setJE]          = useState(null);
+  const [cases,setCases]               = useState([]);
+  const [casesLoading,setCasesL]       = useState(false);
+  const [casesError,setCasesE]         = useState(null);
+  const [scotusTerm,setScotusTerm]     = useState("2024");
+  const [cabinet,setCabinet]           = useState([]);
+  const [cabinetLoading,setCabL]       = useState(false);
+  const [cabinetError,setCabE]         = useState(null);
+  const [loaded,setLoaded]             = useState(false);
+  const [aligned,setAligned]           = useState(0);
+  const [diverged,setDiverged]         = useState(0);
+  const [copied,setCopied]             = useState(false);
 
   useEffect(()=>{setTimeout(()=>setLoaded(true),80);},[]);
 
   const alignScore = aligned+diverged===0 ? null
     : Math.round((aligned/(aligned+diverged))*100);
+
+  const copyAlignment = () => {
+    if (alignScore===null||!selectedRep) return;
+    const repName = (selectedRep.name||"").split(",").reverse().join(" ").trim();
+    navigator.clipboard.writeText(`I align with ${repName} on ${alignScore}% of votes. Check yours at congresstruth.app`);
+    setCopied(true);
+    setTimeout(()=>setCopied(false),2000);
+  };
 
   const handleVote = useCallback((userV,repV)=>{
     if(userV===repV) setAligned(a=>a+1); else setDiverged(d=>d+1);
@@ -294,6 +401,31 @@ export default function App() {
     if(tab==="orders"&&orders.length===0) loadOrders();
   },[tab,orders.length,loadOrders]);
 
+  const loadJustices = useCallback(async()=>{
+    setJL(true); setJE(null);
+    try { const d = await apiGet("/court/justices"); setJustices(Array.isArray(d)?d:[]); }
+    catch(e){ setJE(e.message); }
+    setJL(false);
+  },[]);
+
+  const loadCases = useCallback(async(term)=>{
+    setCasesL(true); setCasesE(null); setCases([]);
+    try { const d = await apiGet("/court/cases",{term}); setCases(Array.isArray(d)?d:[]); }
+    catch(e){ setCasesE(e.message); }
+    setCasesL(false);
+  },[]);
+
+  const loadCabinet = useCallback(async()=>{
+    setCabL(true); setCabE(null);
+    try { const d = await apiGet("/cabinet"); setCabinet(d.nominations||[]); }
+    catch(e){ setCabE(e.message); }
+    setCabL(false);
+  },[]);
+
+  useEffect(()=>{ if(tab==="scotus"&&justices.length===0) loadJustices(); },[tab,justices.length,loadJustices]);
+  useEffect(()=>{ if(tab==="scotus") loadCases(scotusTerm); },[tab,scotusTerm,loadCases]);
+  useEffect(()=>{ if(tab==="cabinet"&&cabinet.length===0) loadCabinet(); },[tab,cabinet.length,loadCabinet]);
+
   const search = ()=>{
     const st = stateInput.toUpperCase().trim();
     if(st.length===2){ setState(st); loadMembers(st); setAligned(0); setDiverged(0); }
@@ -326,10 +458,10 @@ export default function App() {
       }}>
         <div style={{display:"flex",alignItems:"baseline",gap:10}}>
           <span style={{fontFamily:"'Playfair Display',serif",fontWeight:900,fontSize:22,color:"#fff",letterSpacing:"-0.02em"}}>
-            Ledger
+            CongressTruth
           </span>
-          <span style={{fontSize:10,color:"#444",fontFamily:"'DM Mono',monospace",letterSpacing:"0.14em"}}>
-            PUBLIC RECORD
+          <span style={{fontSize:10,color:"#333",fontFamily:"'DM Mono',monospace",letterSpacing:"0.12em"}}>
+            NO ADS · OPEN DATA
           </span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -343,10 +475,12 @@ export default function App() {
           <button onClick={search} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
             borderRadius:6,padding:"5px 10px",color:"#ccc",fontSize:12,cursor:"pointer"}}>Go</button>
           {alignScore!==null&&(
-            <span style={{fontSize:11,color:"#00e5a0",background:"rgba(0,229,160,0.1)",
-              borderRadius:20,padding:"3px 10px",fontFamily:"'DM Mono',monospace"}}>
-              Alignment {alignScore}%
-            </span>
+            <button onClick={copyAlignment} title="Click to copy shareable score" style={{
+              fontSize:11,color:copied?"#fff":"#00e5a0",cursor:"pointer",
+              background:copied?"rgba(0,229,160,0.2)":"rgba(0,229,160,0.1)",
+              border:`1px solid ${copied?"rgba(0,229,160,0.4)":"rgba(0,229,160,0.2)"}`,
+              borderRadius:20,padding:"3px 10px",fontFamily:"'DM Mono',monospace",transition:"all 0.2s",
+            }}>{copied ? "Copied!" : `Alignment ${alignScore}%`}</button>
           )}
         </div>
       </header>
@@ -358,6 +492,8 @@ export default function App() {
           {id:"votes",label:"Voting Record"},
           {id:"finance",label:"Campaign Finance"},
           {id:"orders",label:"Executive Orders"},
+          {id:"scotus",label:"Supreme Court"},
+          {id:"cabinet",label:"Cabinet"},
         ].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{
             background:"none",border:"none",padding:"13px 15px",fontSize:13,
@@ -509,9 +645,59 @@ export default function App() {
         )}
       </main>
 
-      <footer style={{borderTop:"1px solid rgba(255,255,255,0.05)",padding:"16px 24px",textAlign:"center",
-        color:"#333",fontSize:10,fontFamily:"'DM Mono',monospace",letterSpacing:"0.05em"}}>
-        DATA: CONGRESS.GOV · FEC.GOV · FEDERALREGISTER.GOV — ALL PUBLIC DOMAIN
+        {/* SUPREME COURT */}
+        {tab==="scotus"&&(
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Supreme Court</h2>
+            <p style={{color:"#666",fontSize:13,marginBottom:18}}>Current justices and recent decisions. Source: Oyez.org.</p>
+            <div style={{fontSize:11,color:"#555",letterSpacing:"0.06em",marginBottom:10}}>CURRENT JUSTICES</div>
+            {justicesError&&<ErrorBanner msg={justicesError} onRetry={loadJustices}/>}
+            {justicesLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(9,66)}</div>
+              : <div className="fin" style={{display:"flex",flexDirection:"column",gap:8,marginBottom:28}}>
+                  {justices.length===0&&!justicesError&&<div style={{color:"#666",fontSize:13}}>No justices loaded.</div>}
+                  {justices.map(j=><JusticeCard key={j.href||j.name} justice={j}/>)}
+                </div>
+            }
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,color:"#555",letterSpacing:"0.06em"}}>RECENT DECISIONS</div>
+              <select value={scotusTerm} onChange={e=>setScotusTerm(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,color:"#ccc",fontSize:12,padding:"4px 8px",outline:"none",cursor:"pointer"}}>
+                {["2024","2023","2022","2021"].map(t=><option key={t} value={t}>{t} Term</option>)}
+              </select>
+            </div>
+            {casesError&&<ErrorBanner msg={casesError} onRetry={()=>loadCases(scotusTerm)}/>}
+            {casesLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(5,56)}</div>
+              : <div className="fin">
+                  {cases.length===0&&!casesError&&<div style={{color:"#666",fontSize:13}}>No cases loaded for this term.</div>}
+                  {cases.map((c,i)=><CaseCard key={c.docket_number||i} kase={c}/>)}
+                </div>
+            }
+          </div>
+        )}
+
+        {/* CABINET */}
+        {tab==="cabinet"&&(
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Cabinet</h2>
+            <p style={{color:"#666",fontSize:13,marginBottom:18}}>Senate-confirmed executive nominations, 119th Congress. Source: Congress.gov.</p>
+            {cabinetError&&<ErrorBanner msg={cabinetError} onRetry={loadCabinet}/>}
+            {cabinetLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(8,68)}</div>
+              : <div className="fin" style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {cabinet.length===0&&!cabinetError&&<div style={{color:"#666",fontSize:13}}>No cabinet members loaded.</div>}
+                  {cabinet.map((n,i)=><CabinetCard key={n.citation||i} nomination={n}/>)}
+                </div>
+            }
+          </div>
+        )}
+
+      </main>
+
+      <footer style={{borderTop:"1px solid rgba(255,255,255,0.05)",padding:"20px 24px",textAlign:"center",
+        color:"#2a2a2a",fontSize:10,fontFamily:"'DM Mono',monospace",letterSpacing:"0.05em",lineHeight:1.9}}>
+        <div>NO POLITICAL ADVERTISING · NO CORPORATE FUNDING · NO EDITORIAL OPINION</div>
+        <div>DATA: CONGRESS.GOV · FEC.GOV · FEDERALREGISTER.GOV · OYEZ.ORG — ALL PUBLIC DOMAIN</div>
       </footer>
     </div>
   );
