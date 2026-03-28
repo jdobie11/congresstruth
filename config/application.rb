@@ -8,7 +8,7 @@ module Congresstruth
   class Application < Rails::Application
     config.load_defaults 8.0
     config.api_only = true
-    config.cache_store = :memory_store, { size: 64.megabytes }
+    config.cache_store = :memory_store, { size: 67_108_864 } # 64MB
     config.middleware.insert_before 0, Rack::Cors do
       allow do
         origins ENV.fetch("ALLOWED_ORIGINS", "*")
