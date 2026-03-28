@@ -124,14 +124,22 @@ function RepCard({ rep, onClick, selected, alignScore }) {
 // ─── VOTE ROW ─────────────────────────────────────────────────────────────
 function VoteRow({ vote, onVote }) {
   const [userVote, setUserVote] = useState(null);
+  const [summary, setSummary]   = useState(null);
 
   const repVoteStr = vote.memberVotes?.votePosition||"—";
   const isYea = ["Yes","Yea","Aye"].includes(repVoteStr);
   const match = userVote===null ? null : (userVote==="yea")===isYea;
   const handle = (v) => { setUserVote(v); onVote?.(v, isYea?"yea":"nay"); };
-  const title = vote.bill?.title||vote.description||"—";
+  const rawTitle = vote.bill?.title||vote.description||"—";
   const billId = vote.bill?`${(vote.bill.type||"").toUpperCase()} ${vote.bill.number}`:`Roll #${vote.rollNumber||"?"}`;
-  const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(`Explain this US congressional bill in plain English. What does it actually do, who benefits, and who opposes it?\n\nBill: ${billId}\nTitle: ${title}`)}`;
+
+  useEffect(() => {
+    if (!vote.bill?.title) return;
+    const id = `${vote.bill.type||""}${vote.bill.number||""}`;
+    apiPost("/summarize", { title: vote.bill.title, bill_id: id })
+      .then(d => { if (d.summary) setSummary(d.summary); })
+      .catch(() => {});
+  }, [vote.bill?.title]); // eslint-disable-line
 
   return (
     <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"16px 0"}}>
@@ -141,13 +149,12 @@ function VoteRow({ vote, onVote }) {
             <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",
               padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billId}</span>
             <span style={{fontSize:11,color:"#555"}}>{vote.date||""}</span>
-            <a href={claudeUrl} target="_blank" rel="noreferrer" style={{
-              fontSize:10,color:"#888",background:"rgba(255,255,255,0.05)",
-              border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,
-              padding:"2px 7px",textDecoration:"none",whiteSpace:"nowrap",
-            }}>Ask Claude →</a>
           </div>
-          <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{title.length>110?title.slice(0,110)+"…":title}</div>
+          {summary
+            ? <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:3}}>{summary}</div>
+            : <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{rawTitle.length>110?rawTitle.slice(0,110)+"…":rawTitle}</div>
+          }
+          {summary && <div style={{fontSize:11,color:"#555",lineHeight:1.4}}>{rawTitle.length>90?rawTitle.slice(0,90)+"…":rawTitle}</div>}
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -562,7 +569,12 @@ export default function App() {
               ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(5,68)}</div>
               : <div className="fin">
                   {votes.length===0&&!votesError&&selectedRep&&<div style={{color:"#666",fontSize:13}}>No vote records returned.</div>}
-                  {votes.map((v,i)=><VoteRow key={i} vote={v} onVote={handleVote}/>)}
+                  {votes.map((v) => {
+                    const voteKey = v.bill
+                      ? `${v.bill.type || "bill"}-${v.bill.number || "unknown"}`
+                      : `${v.rollNumber || "roll"}-${v.date || "unknown"}`;
+                    return <VoteRow key={voteKey} vote={v} onVote={handleVote} />;
+                  })}
                 </div>
             }
           </div>

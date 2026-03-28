@@ -2,34 +2,25 @@ require "net/http"
 require "json"
 require "uri"
 
-# Converts verbose congressional bill titles into plain-English YES/NO ballot questions.
-# Results are cached permanently per bill ID — bill text never changes after enactment.
-#
-# Example:
-#   input:  "An Act to amend title 10, United States Code, to authorize appropriations for
-#            fiscal year 2025 for military activities of the Department of Defense..."
-#   output: "Should Congress authorize $895B for the 2025 military budget?"
 class SummarizeService
   ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
   SYSTEM_PROMPT = <<~P.freeze
     You convert US congressional bill titles into plain-English ballot questions.
-
     Rules:
-    - Output ONLY the question — no preamble, no explanation, no punctuation after the "?"
+    - Output ONLY the question — no preamble, no punctuation after "?"
     - Start with "Should Congress"
-    - Be specific: include dollar amounts, percentages, or concrete policy changes from the title
+    - Include dollar amounts, percentages, or concrete policy changes if present
     - Stay under 20 words
     - Zero political jargon or acronyms
     - Never signal whether the bill is good or bad
-    - If the title contains no meaningful policy information, output: "Should Congress pass this bill?"
+    - If the title has no meaningful policy info, output: "Should Congress pass this bill?"
   P
 
   def self.summarize(title:, bill_id:)
     return "Should Congress pass this bill?" if title.nil? || title.strip.empty?
 
-    cache_key = "summary:v1:#{bill_id.to_s.downcase.gsub(/\s+/, '')}"
-    cached(cache_key) do
+    cached("summary:v1:#{bill_id.to_s.downcase.gsub(/\s+/, '')}") do
       uri  = URI(ANTHROPIC_URL)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl      = true
@@ -54,15 +45,11 @@ class SummarizeService
       if res.code == "200"
         data.dig("content", 0, "text")&.strip || "Should Congress pass this bill?"
       else
-        # Fallback: truncate the raw title if Claude is unavailable
-        short = title.length > 80 ? "#{title[0, 80]}…" : title
-        short
+        title.length > 80 ? "#{title[0, 80]}…" : title
       end
     end
   end
 
-  # Reuse the Rails cache that ApiService uses (via Rails.cache).
-  # Bills never change, so TTL is effectively permanent (100 years).
   def self.cached(key, &block)
     Rails.cache.fetch(key, expires_in: 100.years, &block)
   end
