@@ -206,6 +206,58 @@ const vBtn = (c)=>({
   fontFamily:"'DM Mono',monospace",fontWeight:700,cursor:"pointer",
 });
 
+// ─── LIVE VOTE CARD ───────────────────────────────────────────────────────
+function LiveVoteCard({ vote, userVote, onVote }) {
+  const voteId  = `live-${vote.chamber}-${vote.roll}`;
+  const passed  = /passed|agreed|confirmed|adopted/i.test(vote.result||"");
+  const failed  = /failed|rejected|not agreed/i.test(vote.result||"");
+  const status  = passed ? {label:"PASSED",color:"#00e5a0"} : failed ? {label:"FAILED",color:"#ff4a4a"} : vote.result ? {label:(vote.result).toUpperCase(),color:"#ffd84a"} : null;
+  const title   = vote.title || vote.question || "—";
+  const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(
+    `Explain this congressional vote in plain terms: ${vote.bill||""} - "${title}". What was being decided, what does it mean, and what are the arguments for and against?`
+  )}`;
+  return (
+    <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+        <div style={{flex:1,minWidth:180}}>
+          <div style={{display:"flex",gap:7,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+            {vote.bill&&<span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{vote.bill}</span>}
+            <span style={{fontSize:10,color:vote.chamber==="Senate"?"#4a9eff":"#c084fc",background:vote.chamber==="Senate"?"rgba(74,158,255,0.1)":"rgba(192,132,252,0.1)",border:`1px solid ${vote.chamber==="Senate"?"rgba(74,158,255,0.3)":"rgba(192,132,252,0.3)"}`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace"}}>{vote.chamber}</span>
+            {vote.date&&<span style={{fontSize:11,color:"#555"}}>{vote.date}</span>}
+            {status&&<span style={{fontSize:10,color:status.color,background:`${status.color}18`,border:`1px solid ${status.color}44`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace"}}>{status.label}</span>}
+          </div>
+          <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:4}}>
+            {title.length>130?title.slice(0,130)+"…":title}
+          </div>
+          {vote.question&&vote.title&&<div style={{fontSize:12,color:"#555",lineHeight:1.4,marginBottom:8}}>{vote.question.length>100?vote.question.slice(0,100)+"…":vote.question}</div>}
+          {(vote.yea>0||vote.nay>0)&&(
+            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+              <VoteBubble label="YEA" count={vote.yea} color="#00e5a0"/>
+              <VoteBubble label="NAY" count={vote.nay} color="#ff4a4a"/>
+              {vote.notVoting>0&&<VoteBubble label="NOT VOTING" count={vote.notVoting} color="#555"/>}
+            </div>
+          )}
+          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Ask Claude →</a>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+          {!userVote?(
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <span style={{fontSize:11,color:"#555"}}>You:</span>
+              <button onClick={()=>onVote(voteId,"yea")} style={vBtn("#00e5a0")}>YEA</button>
+              <button onClick={()=>onVote(voteId,"nay")} style={vBtn("#ff4a4a")}>NAY</button>
+            </div>
+          ):(
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:12,color:userVote==="yea"?"#00e5a0":"#ff4a4a",fontFamily:"'DM Mono',monospace"}}>You: {userVote.toUpperCase()}</span>
+              <button onClick={()=>onVote(voteId,null)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── VOTE BUBBLE ──────────────────────────────────────────────────────────
 function VoteBubble({ label, count, color }) {
   return (
@@ -473,6 +525,10 @@ export default function App() {
   const [billsError,setBillsE]         = useState(null);
   const [userVotes,setUserVotes]       = useState({});
   const [repVotesMap,setRepVotesMap]   = useState({});
+  const [feedSource,setFeedSource]     = useState("live");
+  const [liveVotes,setLiveVotes]       = useState([]);
+  const [liveVotesLoading,setLVL]      = useState(false);
+  const [liveVotesError,setLVE]        = useState(null);
   const [loaded,setLoaded]             = useState(false);
   const [copied,setCopied]             = useState(false);
   const [allMembers,setAllMembers]     = useState([]);
@@ -517,6 +573,16 @@ export default function App() {
   },[]);
 
   useEffect(()=>{ loadBills(); },[loadBills]);
+
+  const loadLiveVotes = useCallback(async()=>{
+    setLVL(true); setLVE(null);
+    try {
+      const data = await apiGet("/recentvotes");
+      setLiveVotes(data.votes||[]);
+    } catch(e){ setLVE(e.message); }
+    setLVL(false);
+  },[]);
+  useEffect(()=>{ loadLiveVotes(); },[loadLiveVotes]);
 
   const loadMembers = useCallback(async(query)=>{
     setML(true); setME(null); setMembers([]); setSelectedRep(null);
@@ -754,21 +820,51 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:14}}>
-              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff"}}>Recent Bills</h2>
-              <span style={{fontSize:12,color:"#444"}}>Vote YES or NO · compare with your rep</span>
+            {/* Source toggle */}
+            <div style={{display:"flex",gap:6,marginBottom:18}}>
+              {[{id:"live",label:"🔴 Live Votes",sub:"Senate & House floor votes"},{id:"bills",label:"All Bills",sub:"119th Congress (2025–2027)"}].map(s=>(
+                <button key={s.id} onClick={()=>setFeedSource(s.id)} style={{
+                  background:feedSource===s.id?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.025)",
+                  border:`1px solid ${feedSource===s.id?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.07)"}`,
+                  borderRadius:10,padding:"10px 16px",cursor:"pointer",textAlign:"left",
+                }}>
+                  <div style={{fontSize:13,fontWeight:600,color:feedSource===s.id?"#fff":"#666"}}>{s.label}</div>
+                  <div style={{fontSize:10,color:"#555",marginTop:2}}>{s.sub}</div>
+                </button>
+              ))}
             </div>
-            {billsError&&<ErrorBanner msg={billsError} onRetry={loadBills}/>}
-            {billsLoading
-              ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(8,90)}</div>
-              : <div className="fin">
-                  {bills.length===0&&!billsError&&<div style={{color:"#666",fontSize:13}}>No bills loaded.</div>}
-                  {bills.map(bill=>{
-                    const billId=`${bill.type}${bill.number}`;
-                    return <BillCard key={billId} bill={bill} repVote={repVotesMap[billId]} userVote={userVotes[billId]} onVote={handleBillVote}/>;
-                  })}
-                </div>
-            }
+
+            {feedSource==="live"&&(
+              <>
+                {liveVotesError&&<ErrorBanner msg={liveVotesError} onRetry={loadLiveVotes}/>}
+                {liveVotesLoading
+                  ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(8,100)}</div>
+                  : <div className="fin">
+                      {liveVotes.length===0&&!liveVotesError&&<div style={{color:"#666",fontSize:13}}>No live votes loaded.</div>}
+                      {liveVotes.map((v,i)=>{
+                        const id=`live-${v.chamber}-${v.roll}`;
+                        return <LiveVoteCard key={id||i} vote={v} userVote={userVotes[id]} onVote={handleBillVote}/>;
+                      })}
+                    </div>
+                }
+              </>
+            )}
+
+            {feedSource==="bills"&&(
+              <>
+                {billsError&&<ErrorBanner msg={billsError} onRetry={loadBills}/>}
+                {billsLoading
+                  ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(8,90)}</div>
+                  : <div className="fin">
+                      {bills.length===0&&!billsError&&<div style={{color:"#666",fontSize:13}}>No bills loaded.</div>}
+                      {bills.map(bill=>{
+                        const billId=`${bill.type}${bill.number}`;
+                        return <BillCard key={billId} bill={bill} repVote={repVotesMap[billId]} userVote={userVotes[billId]} onVote={handleBillVote}/>;
+                      })}
+                    </div>
+                }
+              </>
+            )}
           </div>
         )}
 
