@@ -6,7 +6,7 @@ module.exports = async function handler(req, res) {
   try {
     const r = await fetch(url);
     const data = await r.json();
-    if (!r.ok) return res.json({ votes: [], error: data.message || `Congress API ${r.status}` });
+    if (!r.ok) return res.json({ votes: [], error: r.status === 404 ? null : (data.message || `Congress API ${r.status}`) });
     res.json(data);
   } catch (e) {
     res.json({ votes: [], error: e.message });

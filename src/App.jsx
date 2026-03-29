@@ -750,10 +750,6 @@ export default function App() {
     try {
       const url = "https://www.federalregister.gov/api/v1/documents"
         + "?conditions[type][]=PRESDOCU"
-        + "&conditions[presidential_document_type][]=executive_order"
-        + "&conditions[presidential_document_type][]=memorandum"
-        + "&conditions[presidential_document_type][]=proclamation"
-        + "&conditions[presidential_document_type][]=determination"
         + "&per_page=30&order=newest"
         + "&fields=document_number,publication_date,title,abstract,html_url,type,subtype,executive_order_number";
       const r = await fetch(url);
@@ -1084,8 +1080,7 @@ export default function App() {
                               {/* Votes */}
                               <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>LAST 20 VOTES</div>
                               {expandedVotesL&&<Skeleton height={48}/>}
-                              {!expandedVotesL&&expandedVotes[0]?._error&&<div style={{fontSize:12,color:"#ff4a4a",marginBottom:10}}>Error: {expandedVotes[0]._error}</div>}
-                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records found in Congress.gov.</div>}
+                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records yet in Congress.gov.</div>}
                               {expandedVotes.filter(v=>!v._error).slice(0,20).map((v,i)=>{
                                 const pos=v.memberVotes?.votePosition||"—";
                                 const isYea=["Yes","Yea","Aye"].includes(pos);
