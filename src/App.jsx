@@ -748,9 +748,18 @@ export default function App() {
   const loadOrders = useCallback(async()=>{
     setOL(true); setOE(null);
     try {
-      const data = await apiGet("/orders",{per_page:30});
+      const url = "https://www.federalregister.gov/api/v1/documents"
+        + "?conditions[type][]=PRESDOCU"
+        + "&conditions[presidential_document_type][]=executive_order"
+        + "&conditions[presidential_document_type][]=memorandum"
+        + "&conditions[presidential_document_type][]=proclamation"
+        + "&conditions[presidential_document_type][]=determination"
+        + "&per_page=30&order=newest"
+        + "&fields=document_number,publication_date,signing_date,title,abstract,html_url,subtype,executive_order_number,presidential_document_type";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Federal Register returned ${r.status}`);
+      const data = await r.json();
       setOrders(data.results||[]);
-      if(data.error) setOE(data.error);
     } catch(e){ setOE(e.message); }
     setOL(false);
   },[]);
@@ -758,9 +767,17 @@ export default function App() {
   const loadRegs = useCallback(async(type)=>{
     setRL(true); setRE(null); setRegs([]);
     try {
-      const data = await apiGet("/regulations",{type,per_page:25});
+      let typeParams = "&conditions[type][]=RULE&conditions[type][]=PRORULE";
+      if (type==="final")    typeParams = "&conditions[type][]=RULE";
+      if (type==="proposed") typeParams = "&conditions[type][]=PRORULE";
+      const url = "https://www.federalregister.gov/api/v1/documents"
+        + typeParams
+        + "&per_page=25&order=newest"
+        + "&fields=document_number,publication_date,effective_on,comments_close_on,title,abstract,html_url,type,agency_names,significant,docket_id";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Federal Register returned ${r.status}`);
+      const data = await r.json();
       setRegs(data.results||[]);
-      if(data.error) setRE(data.error);
     } catch(e){ setRE(e.message); }
     setRL(false);
   },[]);
@@ -820,13 +837,13 @@ export default function App() {
     try {
       const d = await apiGet("/votes",{bioguide_id:rep.bioguideId,limit:20});
       setExpandedVotes(d.votes||[]);
-    } catch(_){}
+    } catch(e){ setExpandedVotes([{_error: e.message}]); }
     setEVL(false);
     setEFL(true);
     try {
       const d = await apiGet("/finance",{name:rep.name,state:rep.state});
       setExpandedFin(d);
-    } catch(_){}
+    } catch(e){ setExpandedFin({_error: e.message}); }
     setEFL(false);
   },[expandedRepId]);
 
@@ -1058,8 +1075,9 @@ export default function App() {
                               {/* Votes */}
                               <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>LAST 20 VOTES</div>
                               {expandedVotesL&&<Skeleton height={48}/>}
-                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records available.</div>}
-                              {expandedVotes.slice(0,20).map((v,i)=>{
+                              {!expandedVotesL&&expandedVotes[0]?._error&&<div style={{fontSize:12,color:"#ff4a4a",marginBottom:10}}>Error: {expandedVotes[0]._error}</div>}
+                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records found in Congress.gov.</div>}
+                              {expandedVotes.filter(v=>!v._error).slice(0,20).map((v,i)=>{
                                 const pos=v.memberVotes?.votePosition||"—";
                                 const isYea=["Yes","Yea","Aye"].includes(pos);
                                 const label=v.bill?`${(v.bill.type||"").toUpperCase()} ${v.bill.number}`:`Roll #${v.rollNumber||"?"}`;
@@ -1078,7 +1096,8 @@ export default function App() {
                               <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginTop:16,marginBottom:8}}>CAMPAIGN FINANCE (FEC)</div>
                               {expandedFinanceL&&<Skeleton height={60}/>}
                               {!expandedFinanceL&&!expandedFinance&&<div style={{fontSize:12,color:"#555"}}>No FEC data found.</div>}
-                              {expandedFinance&&(
+                              {!expandedFinanceL&&expandedFinance?._error&&<div style={{fontSize:12,color:"#ff4a4a"}}>FEC error: {expandedFinance._error}</div>}
+                              {expandedFinance&&!expandedFinance._error&&(
                                 <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                                   {[["RAISED",expandedFinance.totals?.receipts],["SPENT",expandedFinance.totals?.disbursements]].map(([l,v])=>(
                                     <div key={l} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px"}}>
