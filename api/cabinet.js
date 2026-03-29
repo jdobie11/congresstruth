@@ -1,6 +1,6 @@
 const KEYWORDS = ["SECRETARY", "ATTORNEY GENERAL", "DIRECTOR", "AMBASSADOR", "ADMINISTRATOR", "SURGEON GENERAL", "TRADE REPRESENTATIVE"];
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const congress = req.query.congress || 119;
   const url = `https://api.congress.gov/v3/nomination?api_key=${process.env.CONGRESS_API_KEY}&congress=${congress}&nominationState=Confirmed&sort=receivedDate+desc&limit=50&format=json`;
@@ -15,4 +15,4 @@ export default async function handler(req, res) {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-}
+};

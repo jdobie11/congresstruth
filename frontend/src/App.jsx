@@ -475,6 +475,15 @@ export default function App() {
   const [repVotesMap,setRepVotesMap]   = useState({});
   const [loaded,setLoaded]             = useState(false);
   const [copied,setCopied]             = useState(false);
+  const [allMembers,setAllMembers]     = useState([]);
+  const [allMembersLoading,setAML]     = useState(false);
+  const [allMembersError,setAME]       = useState(null);
+  const [repFilter,setRepFilter]       = useState({state:"",chamber:"",party:""});
+  const [expandedRepId,setExpandedRepId] = useState(null);
+  const [expandedVotes,setExpandedVotes] = useState([]);
+  const [expandedVotesL,setEVL]        = useState(false);
+  const [expandedFinance,setExpandedFin] = useState(null);
+  const [expandedFinanceL,setEFL]      = useState(false);
 
   useEffect(()=>{setTimeout(()=>setLoaded(true),80);},[]);
 
@@ -609,6 +618,34 @@ export default function App() {
   useEffect(()=>{ if(tab==="scotus") loadCases(scotusTerm); },[tab,scotusTerm,loadCases]);
   useEffect(()=>{ if(tab==="cabinet"&&cabinet.length===0) loadCabinet(); },[tab,cabinet.length,loadCabinet]);
 
+  const loadAllMembers = useCallback(async()=>{
+    setAML(true); setAME(null);
+    try {
+      const data = await apiGet("/members",{all:"true",limit:250});
+      setAllMembers(data.members||[]);
+    } catch(e){ setAME(e.message); }
+    setAML(false);
+  },[]);
+  useEffect(()=>{ if(tab==="reps"&&allMembers.length===0) loadAllMembers(); },[tab,allMembers.length,loadAllMembers]);
+
+  const expandRep = useCallback(async(rep)=>{
+    if(expandedRepId===rep.bioguideId){ setExpandedRepId(null); return; }
+    setExpandedRepId(rep.bioguideId);
+    setExpandedVotes([]); setExpandedFin(null);
+    setEVL(true);
+    try {
+      const d = await apiGet("/votes",{bioguide_id:rep.bioguideId,limit:20});
+      setExpandedVotes(d.votes||[]);
+    } catch(_){}
+    setEVL(false);
+    setEFL(true);
+    try {
+      const d = await apiGet("/finance",{name:rep.name,state:rep.state});
+      setExpandedFin(d);
+    } catch(_){}
+    setEFL(false);
+  },[expandedRepId]);
+
   const search = ()=>{
     const q = stateInput.trim();
     if(q.length===2||/^\d{5}$/.test(q)){ setState(q.toUpperCase()); loadMembers(q); }
@@ -737,50 +774,110 @@ export default function App() {
 
         {tab==="reps"&&(
           <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Representatives</h2>
-            <p style={{color:"#666",fontSize:13,marginBottom:18}}>
-              Current members for <strong style={{color:"#aaa"}}>{state}</strong>. Search your state on the Bills tab to compare votes.
-            </p>
-            {membersError&&<ErrorBanner msg={membersError} onRetry={()=>loadMembers(state)}/>}
-            {membersLoading
-              ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(3,72)}</div>
-              : <div className="fin" style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {members.length===0&&!membersError&&<div style={{color:"#666",fontSize:13}}>No members found for "{state}".</div>}
-                  {members.map(r=>(
-                    <RepCard key={r.bioguideId} rep={r} onClick={setSelectedRep}
-                      selected={selectedRep?.bioguideId===r.bioguideId}
-                      alignScore={selectedRep?.bioguideId===r.bioguideId&&alignScore!==null?alignScore:undefined}/>
-                  ))}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:14,flexWrap:"wrap",gap:8}}>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff"}}>All Representatives</h2>
+              <span style={{fontSize:12,color:"#444"}}>Click any rep to see voting history + finance</span>
+            </div>
+            {/* Filters */}
+            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+              {[
+                {label:"State",key:"state",opts:["",...[...new Set(allMembers.map(m=>m.state))].filter(Boolean).sort()],fmt:v=>v||"All States"},
+                {label:"Chamber",key:"chamber",opts:["","Senate","House"],fmt:v=>v||"All Chambers"},
+                {label:"Party",key:"party",opts:["","D","R","I"],fmt:v=>v?partyLabel(v):"All Parties"},
+              ].map(({key,opts,fmt})=>(
+                <select key={key} value={repFilter[key]}
+                  onChange={e=>setRepFilter(f=>({...f,[key]:e.target.value}))}
+                  style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#ccc",fontSize:12,padding:"7px 10px",outline:"none",cursor:"pointer"}}>
+                  {opts.map(o=><option key={o} value={o}>{fmt(o)}</option>)}
+                </select>
+              ))}
+              {(repFilter.state||repFilter.chamber||repFilter.party)&&(
+                <button onClick={()=>setRepFilter({state:"",chamber:"",party:""})}
+                  style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#666",fontSize:12,padding:"7px 12px",cursor:"pointer"}}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+            {allMembersError&&<ErrorBanner msg={allMembersError} onRetry={loadAllMembers}/>}
+            {allMembersLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(10,72)}</div>
+              : <div className="fin">
+                  {(()=>{
+                    const filtered = allMembers.filter(m=>{
+                      const chamber=(m.terms?.item?.[m.terms.item.length-1]?.chamber||"");
+                      return (!repFilter.state||m.state===repFilter.state)
+                        &&(!repFilter.chamber||chamber.toLowerCase().includes(repFilter.chamber.toLowerCase()))
+                        &&(!repFilter.party||m.partyName?.[0]===repFilter.party);
+                    });
+                    if(filtered.length===0) return <div style={{color:"#666",fontSize:13}}>No members match filters.</div>;
+                    return filtered.map(rep=>{
+                      const party=rep.partyName?.[0];
+                      const chamber=(rep.terms?.item?.[rep.terms.item.length-1]?.chamber||"");
+                      const initials=(rep.name||"").split(",").reverse().join(" ").trim().split(" ").map(w=>w[0]).filter(Boolean).join("").slice(0,2).toUpperCase()||"??";
+                      const isOpen=expandedRepId===rep.bioguideId;
+                      return (
+                        <div key={rep.bioguideId} style={{marginBottom:8}}>
+                          <div onClick={()=>expandRep(rep)} style={{background:isOpen?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.025)",border:`1px solid ${isOpen?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.07)"}`,borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+                            <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,background:`${partyColor(party)}22`,border:`2px solid ${partyColor(party)}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:partyColor(party),fontFamily:"'DM Mono',monospace"}}>{initials}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:14,color:"#f0f0f0"}}>{rep.name}</div>
+                              <div style={{fontSize:12,color:"#666",marginTop:1}}>
+                                <span style={{color:partyColor(party)}}>{partyLabel(party)}</span>
+                                {` · ${chamber||"Congress"} · ${rep.state}`}
+                                {rep.district?` · District ${rep.district}`:""}
+                              </div>
+                            </div>
+                            <div style={{fontSize:11,color:"#444"}}>{isOpen?"▲":"▼"}</div>
+                          </div>
+                          {isOpen&&(
+                            <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:"0 0 12px 12px",padding:"16px 18px",marginTop:-1}}>
+                              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                                <button onClick={()=>{setSelectedRep(rep);setTab("feed");}} style={{fontSize:12,color:"#00e5a0",background:"rgba(0,229,160,0.08)",border:"1px solid rgba(0,229,160,0.2)",borderRadius:6,padding:"5px 12px",cursor:"pointer"}}>
+                                  Track on Bills Feed →
+                                </button>
+                                {rep.url&&<a href={rep.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"#4a9eff",textDecoration:"none",padding:"5px 0"}}>Congress.gov profile →</a>}
+                              </div>
+                              {/* Votes */}
+                              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>LAST 20 VOTES</div>
+                              {expandedVotesL&&<Skeleton height={48}/>}
+                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records available.</div>}
+                              {expandedVotes.slice(0,20).map((v,i)=>{
+                                const pos=v.memberVotes?.votePosition||"—";
+                                const isYea=["Yes","Yea","Aye"].includes(pos);
+                                const label=v.bill?`${(v.bill.type||"").toUpperCase()} ${v.bill.number}`:`Roll #${v.rollNumber||"?"}`;
+                                const title=v.bill?.title||v.description||"—";
+                                return (
+                                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",color:"#888",padding:"1px 6px",borderRadius:3,fontFamily:"'DM Mono',monospace",marginRight:6}}>{label}</span>
+                                      <span style={{fontSize:12,color:"#999"}}>{title.length>80?title.slice(0,80)+"…":title}</span>
+                                    </div>
+                                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",flexShrink:0,color:pos==="—"?"#555":isYea?"#00e5a0":"#ff4a4a"}}>{pos}</span>
+                                  </div>
+                                );
+                              })}
+                              {/* Finance */}
+                              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginTop:16,marginBottom:8}}>CAMPAIGN FINANCE (FEC)</div>
+                              {expandedFinanceL&&<Skeleton height={60}/>}
+                              {!expandedFinanceL&&!expandedFinance&&<div style={{fontSize:12,color:"#555"}}>No FEC data found.</div>}
+                              {expandedFinance&&(
+                                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                                  {[["RAISED",expandedFinance.totals?.receipts],["SPENT",expandedFinance.totals?.disbursements]].map(([l,v])=>(
+                                    <div key={l} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,padding:"10px 14px"}}>
+                                      <div style={{fontSize:9,color:"#555",letterSpacing:"0.07em",marginBottom:3}}>{l}</div>
+                                      <div style={{fontSize:16,fontWeight:700,color:"#f0f0f0",fontFamily:"'DM Mono',monospace"}}>{fmt(v)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
             }
-            {selectedRep&&!membersLoading&&(
-              <div className="fin" style={{marginTop:18,background:"rgba(255,255,255,0.025)",
-                border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:20}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,gap:12}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:17,color:"#fff",marginBottom:3}}>{selectedRep.name}</div>
-                    <div style={{fontSize:12,color:"#666"}}>
-                      {partyLabel(selectedRep.partyName?.[0])} · {selectedRep.terms?.item?.[selectedRep.terms.item.length-1]?.chamber||"Congress"} · {selectedRep.state}
-                    </div>
-                  </div>
-                  {alignScore!==null&&<AlignmentRing score={alignScore} size={64}/>}
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-                  {[["DISTRICT",selectedRep.district||"—"],["SINCE",selectedRep.terms?.item?.[0]?.startYear||"—"],["PARTY",selectedRep.partyName?.[0]||"—"]].map(([l,v])=>(
-                    <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"10px 12px"}}>
-                      <div style={{fontSize:10,color:"#666",marginBottom:3,letterSpacing:"0.06em"}}>{l}</div>
-                      <div style={{fontSize:17,fontWeight:700,color:"#f0f0f0",fontFamily:"'DM Mono',monospace"}}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-                {selectedRep.url&&(
-                  <a href={selectedRep.url} target="_blank" rel="noreferrer"
-                    style={{display:"inline-block",marginTop:12,fontSize:12,color:"#4a9eff",textDecoration:"none"}}>
-                    Full profile on Congress.gov →
-                  </a>
-                )}
-              </div>
-            )}
           </div>
         )}
 
