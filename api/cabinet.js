@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: "Congress API error" });
     const nominations = (data.nominations || []).filter(n =>
-      n.nomineeCount === 1 && KEYWORDS.some(k => (n.description || "").toUpperCase().includes(k))
+      KEYWORDS.some(k => (n.description || "").toUpperCase().includes(k))
     );
     res.json({ nominations, congress });
   } catch (e) {

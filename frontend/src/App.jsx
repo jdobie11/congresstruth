@@ -688,12 +688,8 @@ export default function App() {
   const loadJustices = useCallback(async()=>{
     setJL(true); setJE(null);
     try {
-      const d = await directGet("https://api.oyez.org/justices");
-      const current = (Array.isArray(d)?d:[]).filter(j=>{
-        const r=(j.roles||[]).filter(r=>r.institution_name?.includes("Supreme Court")).at(-1);
-        return r&&r.end_date===null;
-      });
-      setJustices(current);
+      const d = await apiGet("/scotus",{type:"justices"});
+      setJustices(Array.isArray(d)?d:[]);
     } catch(e){ setJE(e.message); }
     setJL(false);
   },[]);
@@ -701,7 +697,7 @@ export default function App() {
   const loadCases = useCallback(async(term)=>{
     setCasesL(true); setCasesE(null); setCases([]);
     try {
-      const d = await directGet("https://api.oyez.org/cases",{filter:`term:${term}`,per_page:20});
+      const d = await apiGet("/scotus",{type:"cases",term});
       setCases(Array.isArray(d)?d:[]);
     } catch(e){ setCasesE(e.message); }
     setCasesL(false);
