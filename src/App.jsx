@@ -961,6 +961,9 @@ export default function App() {
                                 <button onClick={()=>{setSelectedRep(rep);setTab("feed");}} style={{fontSize:12,color:"#00e5a0",background:"rgba(0,229,160,0.08)",border:"1px solid rgba(0,229,160,0.2)",borderRadius:6,padding:"5px 12px",cursor:"pointer"}}>
                                   Track on Bills Feed →
                                 </button>
+                                <button onClick={()=>{setSelectedRep(rep);setTab("finance");}} style={{fontSize:12,color:"#c084fc",background:"rgba(192,132,252,0.08)",border:"1px solid rgba(192,132,252,0.2)",borderRadius:6,padding:"5px 12px",cursor:"pointer"}}>
+                                  Full Finance →
+                                </button>
                                 {rep.url&&<a href={rep.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"#4a9eff",textDecoration:"none",padding:"5px 0"}}>Congress.gov profile →</a>}
                               </div>
                               {/* Votes */}
@@ -1014,7 +1017,7 @@ export default function App() {
             <p style={{color:"#666",fontSize:13,marginBottom:18}}>
               FEC data for <strong style={{color:"#aaa"}}>{selectedRep?.name||"—"}</strong>.
             </p>
-            {!selectedRep&&<div style={{color:"#666",fontSize:13}}>← Select a representative first.</div>}
+            {!selectedRep&&<div style={{color:"#666",fontSize:13}}>Go to the <button onClick={()=>setTab("reps")} style={{background:"none",border:"none",color:"#c084fc",cursor:"pointer",fontSize:13,padding:0}}>Representatives tab</button>, expand a rep, and click "Full Finance →".</div>}
             {financeError&&<ErrorBanner msg={financeError}/>}
             {financeLoading
               ? <div style={{display:"flex",flexDirection:"column",gap:12}}>
