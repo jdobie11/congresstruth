@@ -1,7 +1,6 @@
 {
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
   "outputDirectory": "dist",
-  "functions": {
-    "api/*.js": {}
-  },
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
