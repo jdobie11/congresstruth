@@ -697,7 +697,7 @@ export default function App() {
           </div>
         )}
 
-      </main>
+      </div>
 
       <footer style={{borderTop:"1px solid rgba(255,255,255,0.05)",padding:"20px 24px",textAlign:"center",
         color:"#2a2a2a",fontSize:10,fontFamily:"'DM Mono',monospace",letterSpacing:"0.05em",lineHeight:1.9}}>
