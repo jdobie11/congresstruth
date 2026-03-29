@@ -32,6 +32,19 @@ async function apiPost(path, body = {}) {
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────
 const partyColor = (p) => p === "D" ? "#4a9eff" : p === "R" ? "#ff4a4a" : "#c084fc";
+
+const billStatus = (action) => {
+  if (!action) return null;
+  const t = action.toLowerCase();
+  if (t.includes("became public law") || t.includes("signed by the president")) return { label: "SIGNED INTO LAW", color: "#00e5a0" };
+  if (t.includes("passed senate") && t.includes("passed house"))                 return { label: "PASSED BOTH", color: "#00e5a0" };
+  if (t.includes("passed senate"))   return { label: "PASSED SENATE", color: "#4a9eff" };
+  if (t.includes("passed house"))    return { label: "PASSED HOUSE",  color: "#4a9eff" };
+  if (t.includes("failed of passage") || t.includes("failed to pass")) return { label: "FAILED", color: "#ff4a4a" };
+  if (t.includes("vetoed"))          return { label: "VETOED", color: "#ff8c00" };
+  if (t.includes("referred to"))     return { label: "IN COMMITTEE", color: "#666" };
+  return null;
+};
 const partyLabel = (p) => p === "D" ? "Democrat" : p === "R" ? "Republican" : p || "Independent";
 const parseName  = (desc) => desc ? desc.split(",")[0].trim() : "Unknown";
 const parseRole  = (desc) => { if (!desc) return ""; const m = desc.match(/to be (.+)/i); return m ? m[1].trim() : ""; };
@@ -193,19 +206,48 @@ const vBtn = (c)=>({
   fontFamily:"'DM Mono',monospace",fontWeight:700,cursor:"pointer",
 });
 
+// ─── VOTE BUBBLE ──────────────────────────────────────────────────────────
+function VoteBubble({ label, count, color }) {
+  return (
+    <div style={{background:`${color}12`,border:`1px solid ${color}33`,borderRadius:8,padding:"7px 13px",textAlign:"center",minWidth:60}}>
+      <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color}}>{count}</div>
+      <div style={{fontSize:9,color:"#555",letterSpacing:"0.07em",marginTop:1}}>{label}</div>
+    </div>
+  );
+}
+
 // ─── BILL CARD ────────────────────────────────────────────────────────────
 function BillCard({ bill, repVote, userVote, onVote }) {
-  const billId   = `${bill.type}${bill.number}`;
+  const [exp,setExp]         = useState(false);
+  const [detail,setDetail]   = useState(null);
+  const [detailLoading,setDL] = useState(false);
+
+  const billId    = `${bill.type}${bill.number}`;
   const billLabel = `${(bill.type||"").toUpperCase()} ${bill.number}`;
-  const title    = bill.title || `${billLabel}`;
-  const action   = bill.latestAction?.text || "";
-  const date     = bill.latestAction?.actionDate || "";
-  const sponsor  = bill.sponsors?.[0]?.fullName || bill.sponsors?.[0]?.name || "";
-  const sparty   = bill.sponsors?.[0]?.party || "";
-  const match    = (userVote && repVote) ? userVote === repVote : null;
+  const title     = bill.title || billLabel;
+  const action    = bill.latestAction?.text || "";
+  const date      = bill.latestAction?.actionDate || "";
+  const sponsor   = bill.sponsors?.[0]?.fullName || bill.sponsors?.[0]?.name || "";
+  const sparty    = bill.sponsors?.[0]?.party || "";
+  const match     = (userVote && repVote) ? userVote === repVote : null;
+  const status    = billStatus(action);
   const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(
     `Explain this bill in plain terms: ${billLabel} - "${title}". What does it do, who does it affect, and what are the main arguments for and against?`
   )}`;
+
+  const toggleExpand = async () => {
+    const next = !exp;
+    setExp(next);
+    if (next && !detail && !detailLoading) {
+      setDL(true);
+      try {
+        const d = await apiGet("/bill-detail", { congress: bill.congress || "119", type: bill.type, number: bill.number });
+        setDetail(d);
+      } catch (_) { setDetail({}); }
+      setDL(false);
+    }
+  };
+
   return (
     <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",marginBottom:10}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
@@ -214,12 +256,12 @@ function BillCard({ bill, repVote, userVote, onVote }) {
             <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billLabel}</span>
             {date&&<span style={{fontSize:11,color:"#555"}}>{date}</span>}
             {sponsor&&<span style={{fontSize:11,color:partyColor(sparty)}}>{sponsor}</span>}
+            {status&&<span style={{fontSize:10,color:status.color,background:`${status.color}18`,border:`1px solid ${status.color}44`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace",letterSpacing:"0.04em"}}>{status.label}</span>}
           </div>
           <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:5}}>
             {title.length>130?title.slice(0,130)+"…":title}
           </div>
-          {action&&<div style={{fontSize:12,color:"#555",lineHeight:1.4,marginBottom:8}}>{action.length>110?action.slice(0,110)+"…":action}</div>}
-          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none",letterSpacing:"0.03em"}}>Ask Claude →</a>
+          {!exp&&action&&<div style={{fontSize:12,color:"#555",lineHeight:1.4}}>{action.length>110?action.slice(0,110)+"…":action}</div>}
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
           {repVote&&(
@@ -231,18 +273,51 @@ function BillCard({ bill, repVote, userVote, onVote }) {
           {!userVote?(
             <div style={{display:"flex",gap:5,alignItems:"center"}}>
               <span style={{fontSize:11,color:"#555"}}>You:</span>
-              <button onClick={()=>onVote(billId,"yea")} style={vBtn("#00e5a0")}>YEA</button>
-              <button onClick={()=>onVote(billId,"nay")} style={vBtn("#ff4a4a")}>NAY</button>
+              <button onClick={e=>{e.stopPropagation();onVote(billId,"yea");}} style={vBtn("#00e5a0")}>YEA</button>
+              <button onClick={e=>{e.stopPropagation();onVote(billId,"nay");}} style={vBtn("#ff4a4a")}>NAY</button>
             </div>
           ):(
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {match!==null&&<span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:match?"#00e5a0":"#ff4a4a"}}>{match?"✓ ALIGNED":"✗ DIVERGED"}</span>}
               <span style={{fontSize:12,color:userVote==="yea"?"#00e5a0":"#ff4a4a",fontFamily:"'DM Mono',monospace"}}>You: {userVote.toUpperCase()}</span>
-              <button onClick={()=>onVote(billId,null)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
+              <button onClick={e=>{e.stopPropagation();onVote(billId,null);}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
             </div>
           )}
+          <button onClick={toggleExpand} style={{background:"none",border:"none",color:"#555",fontSize:11,cursor:"pointer",padding:"2px 0",letterSpacing:"0.03em"}}>
+            {exp?"less ▲":"details ▼"}
+          </button>
         </div>
       </div>
+      {exp&&(
+        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+          {detailLoading&&<Skeleton height={60}/>}
+          {detail?.summary&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:6}}>PLAIN SUMMARY (CRS)</div>
+              <div style={{fontSize:13,color:"#bbb",lineHeight:1.75}}>
+                {detail.summary.length>600?detail.summary.slice(0,600)+"…":detail.summary}
+              </div>
+            </div>
+          )}
+          {detail?.voteTotals&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>
+                {detail.voteTotals.voteType?detail.voteTotals.voteType.toUpperCase():"FLOOR VOTE"} — HOW CONGRESS VOTED
+                {detail.voteTotals.result&&<span style={{color:"#888",marginLeft:8}}>· {detail.voteTotals.result}</span>}
+              </div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <VoteBubble label="YEA" count={detail.voteTotals.yea} color="#00e5a0"/>
+                <VoteBubble label="NAY" count={detail.voteTotals.nay} color="#ff4a4a"/>
+                {detail.voteTotals.notVoting>0&&<VoteBubble label="NOT VOTING" count={detail.voteTotals.notVoting} color="#555"/>}
+              </div>
+            </div>
+          )}
+          {!detailLoading&&detail&&!detail.summary&&!detail.voteTotals&&(
+            <div style={{fontSize:12,color:"#555",marginBottom:10}}>No CRS summary or recorded vote available yet.</div>
+          )}
+          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Ask Claude for a plain-language summary →</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,16 +397,25 @@ function JusticeCard({ justice }) {
 // ─── CASE CARD ────────────────────────────────────────────────────────────
 function CaseCard({ kase }) {
   const [exp,setExp] = useState(false);
-  const decided = (kase.timeline||[]).find(t=>t.event==="Decided");
+  const decided    = (kase.timeline||[]).find(t=>t.event==="Decided");
   const decidedDate = decided?.dates?.[0] ? new Date(decided.dates[0]*1000).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : null;
-  const oyezUrl = (kase.href||"").replace("api.oyez.org","www.oyez.org");
+  const oyezUrl    = (kase.href||"").replace("api.oyez.org","www.oyez.org");
+  const decision   = kase.decisions?.[0];
+  const voteStr    = (decision?.majority_vote!=null&&decision?.minority_vote!=null) ? `${decision.majority_vote}–${decision.minority_vote}` : null;
+  const winner     = decision?.winning_party || null;
+  const resultDesc = decision?.description || null;
   return (
     <div onClick={()=>setExp(!exp)} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"13px 17px",marginBottom:8,cursor:"pointer"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
         <div style={{flex:1}}>
-          <div style={{fontSize:10,color:"#555",marginBottom:4,fontFamily:"'DM Mono',monospace"}}>{kase.docket_number}{decidedDate?` · Decided ${decidedDate}`:""}</div>
+          <div style={{fontSize:10,color:"#555",marginBottom:4,fontFamily:"'DM Mono',monospace",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <span>{kase.docket_number}{decidedDate?` · Decided ${decidedDate}`:""}</span>
+            {voteStr&&<span style={{color:"#ffd84a",background:"rgba(255,216,74,0.1)",border:"1px solid rgba(255,216,74,0.2)",borderRadius:4,padding:"1px 6px"}}>{voteStr}</span>}
+          </div>
           <div style={{fontWeight:600,fontSize:13,color:"#e0e0e0",lineHeight:1.4}}>{kase.name}</div>
-          {exp&&kase.description&&<div style={{fontSize:13,color:"#888",lineHeight:1.6,marginTop:8}}>{kase.description}</div>}
+          {winner&&<div style={{fontSize:12,color:"#888",marginTop:3}}>Decided in favor of: <span style={{color:"#ccc"}}>{winner}</span></div>}
+          {exp&&resultDesc&&<div style={{fontSize:13,color:"#777",lineHeight:1.6,marginTop:8,fontStyle:"italic"}}>{resultDesc}</div>}
+          {exp&&kase.description&&<div style={{fontSize:13,color:"#888",lineHeight:1.6,marginTop:6}}>{kase.description}</div>}
           {exp&&oyezUrl&&<a href={oyezUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{display:"inline-block",marginTop:8,fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Full case on Oyez →</a>}
         </div>
         <div style={{color:"#555",fontSize:12,paddingTop:2,flexShrink:0}}>{exp?"▲":"▼"}</div>
@@ -425,14 +509,17 @@ export default function App() {
 
   useEffect(()=>{ loadBills(); },[loadBills]);
 
-  const loadMembers = useCallback(async(st)=>{
+  const loadMembers = useCallback(async(query)=>{
     setML(true); setME(null); setMembers([]); setSelectedRep(null);
     setRepVotesMap({}); setUserVotes({});
     try {
-      const data = await apiGet("/members",{state:st,limit:10});
+      const isZip = /^\d{5}$/.test(query.trim());
+      const params = isZip ? {zip:query.trim(),limit:10} : {state:query.toUpperCase().trim(),limit:10};
+      const data = await apiGet("/members",params);
       const list = data.members||[];
       setMembers(list);
       if(list[0]) setSelectedRep(list[0]);
+      if(list.length===0) setME("No members found. Try a different state or ZIP.");
     } catch(e){ setME(e.message); }
     setML(false);
   },[]);
@@ -523,8 +610,8 @@ export default function App() {
   useEffect(()=>{ if(tab==="cabinet"&&cabinet.length===0) loadCabinet(); },[tab,cabinet.length,loadCabinet]);
 
   const search = ()=>{
-    const st = stateInput.toUpperCase().trim();
-    if(st.length===2){ setState(st); loadMembers(st); }
+    const q = stateInput.trim();
+    if(q.length===2||/^\d{5}$/.test(q)){ setState(q.toUpperCase()); loadMembers(q); }
   };
 
   const skeletons = (n,h)=>[...Array(n)].map((_,i)=><Skeleton key={i} height={h}/>);
@@ -600,12 +687,12 @@ export default function App() {
               <div style={{fontSize:10,color:"#555",letterSpacing:"0.08em",marginBottom:8}}>TRACK YOUR REP</div>
               <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
                 <input value={stateInput}
-                  onChange={e=>setStateInput(e.target.value.toUpperCase().slice(0,2))}
+                  onChange={e=>setStateInput(e.target.value.slice(0,10))}
                   onKeyDown={e=>e.key==="Enter"&&search()}
-                  placeholder="State (e.g. CA)"
+                  placeholder="State (CA) or ZIP"
                   style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",
                     borderRadius:8,padding:"8px 12px",color:"#fff",fontSize:13,
-                    fontFamily:"'DM Mono',monospace",width:140,outline:"none"}}/>
+                    fontFamily:"'DM Mono',monospace",width:160,outline:"none"}}/>
                 <button onClick={search} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.14)",
                   borderRadius:8,padding:"8px 18px",color:"#ccc",fontSize:13,cursor:"pointer"}}>Find My Rep</button>
                 {membersLoading&&<span style={{fontSize:12,color:"#555"}}>Loading…</span>}
