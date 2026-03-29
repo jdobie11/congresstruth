@@ -236,9 +236,9 @@ function LiveVoteCard({ vote, userVote, onVote }) {
           {revealed&&status&&<span style={{fontSize:10,color:status.color,background:`${status.color}18`,border:`1px solid ${status.color}44`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace",animation:"fadeUp 0.4s"}}>{status.label}</span>}
         </div>
         <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:4}}>
-          {title.length>140?title.slice(0,140)+"…":title}
+          {title}
         </div>
-        {vote.question&&vote.title&&<div style={{fontSize:12,color:"#666",marginTop:4}}>{vote.question.length>120?vote.question.slice(0,120)+"…":vote.question}</div>}
+        {vote.question&&vote.title&&<div style={{fontSize:12,color:"#666",marginTop:4}}>{vote.question}</div>}
       </div>
       {/* Pre-vote nudge */}
       {!revealed&&<div style={{fontSize:12,color:"#444",marginBottom:10,fontStyle:"italic"}}>Vote first — results hidden until you do ↓</div>}
