@@ -5,8 +5,9 @@ log/
 .bundle/
 vendor/bundle/
 storage/
-frontend/node_modules/
-frontend/dist/
+frontend/
+node_modules/
+dist/
 .env
 .env.local
 .DS_Store
