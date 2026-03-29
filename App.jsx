@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────
-// This is your Rails server. No API keys live here — they're safe in .env on the server.
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const API_BASE = "/api";
 
 async function apiGet(path, params = {}) {
-  const url = new URL(`${API_BASE}${path}`);
+  const url = new URL(`${API_BASE}${path}`, window.location.origin);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
-  return data;
+  return data;}
+
+async function directGet(url, params = {}) {
+  const u = new URL(url);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  const res = await fetch(u);
+  if (!res.ok) throw new Error(`Error ${res.status}`);
+  return res.json();
 }
 
 async function apiPost(path, body = {}) {
@@ -124,14 +130,22 @@ function RepCard({ rep, onClick, selected, alignScore }) {
 // ─── VOTE ROW ─────────────────────────────────────────────────────────────
 function VoteRow({ vote, onVote }) {
   const [userVote, setUserVote] = useState(null);
+  const [summary, setSummary]   = useState(null);
 
   const repVoteStr = vote.memberVotes?.votePosition||"—";
   const isYea = ["Yes","Yea","Aye"].includes(repVoteStr);
   const match = userVote===null ? null : (userVote==="yea")===isYea;
   const handle = (v) => { setUserVote(v); onVote?.(v, isYea?"yea":"nay"); };
-  const title = vote.bill?.title||vote.description||"—";
+  const rawTitle = vote.bill?.title||vote.description||"—";
   const billId = vote.bill?`${(vote.bill.type||"").toUpperCase()} ${vote.bill.number}`:`Roll #${vote.rollNumber||"?"}`;
-  const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(`Explain this US congressional bill in plain English. What does it actually do, who benefits, and who opposes it?\n\nBill: ${billId}\nTitle: ${title}`)}`;
+
+  useEffect(() => {
+    if (!vote.bill?.title) return;
+    const id = `${vote.bill.type||""}${vote.bill.number||""}`;
+    apiPost("/summarize", { title: vote.bill.title, bill_id: id })
+      .then(d => { if (d.summary) setSummary(d.summary); })
+      .catch(() => {});
+  }, [vote.bill?.title]); // eslint-disable-line
 
   return (
     <div style={{borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"16px 0"}}>
@@ -141,13 +155,12 @@ function VoteRow({ vote, onVote }) {
             <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",
               padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billId}</span>
             <span style={{fontSize:11,color:"#555"}}>{vote.date||""}</span>
-            <a href={claudeUrl} target="_blank" rel="noreferrer" style={{
-              fontSize:10,color:"#888",background:"rgba(255,255,255,0.05)",
-              border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,
-              padding:"2px 7px",textDecoration:"none",whiteSpace:"nowrap",
-            }}>Ask Claude →</a>
           </div>
-          <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{title.length>110?title.slice(0,110)+"…":title}</div>
+          {summary
+            ? <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:3}}>{summary}</div>
+            : <div style={{fontWeight:500,fontSize:13,color:"#ddd",lineHeight:1.4}}>{rawTitle.length>110?rawTitle.slice(0,110)+"…":rawTitle}</div>
+          }
+          {summary && <div style={{fontSize:11,color:"#555",lineHeight:1.4}}>{rawTitle.length>90?rawTitle.slice(0,90)+"…":rawTitle}</div>}
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -356,7 +369,7 @@ export default function App() {
     if(!id) return;
     setVL(true); setVE(null); setVotes([]);
     try {
-      const data = await apiGet(`/votes/${id}`,{limit:20});
+      const data = await apiGet("/votes",{bioguide_id:id,limit:20});
       setVotes(data.votes||[]);
     } catch(e){ setVE(e.message); }
     setVL(false);
@@ -384,7 +397,12 @@ export default function App() {
   const loadOrders = useCallback(async()=>{
     setOL(true); setOE(null);
     try {
-      const data = await apiGet("/orders",{per_page:20});
+      const data = await directGet("https://www.federalregister.gov/api/v1/documents",{
+        "conditions[type][]":"PRESDOCU",
+        "conditions[presidential_document_type][]":"executive_order",
+        per_page:20, order:"newest",
+        fields:"document_number,publication_date,title,abstract,html_url"
+      });
       setOrders(data.results||[]);
     } catch(e){ setOE(e.message); }
     setOL(false);
@@ -396,15 +414,23 @@ export default function App() {
 
   const loadJustices = useCallback(async()=>{
     setJL(true); setJE(null);
-    try { const d = await apiGet("/court/justices"); setJustices(Array.isArray(d)?d:[]); }
-    catch(e){ setJE(e.message); }
+    try {
+      const d = await directGet("https://api.oyez.org/justices");
+      const current = (Array.isArray(d)?d:[]).filter(j=>{
+        const r=(j.roles||[]).filter(r=>r.institution_name?.includes("Supreme Court")).at(-1);
+        return r&&r.end_date===null;
+      });
+      setJustices(current);
+    } catch(e){ setJE(e.message); }
     setJL(false);
   },[]);
 
   const loadCases = useCallback(async(term)=>{
     setCasesL(true); setCasesE(null); setCases([]);
-    try { const d = await apiGet("/court/cases",{term}); setCases(Array.isArray(d)?d:[]); }
-    catch(e){ setCasesE(e.message); }
+    try {
+      const d = await directGet("https://api.oyez.org/cases",{filter:`term:${term}`,per_page:20});
+      setCases(Array.isArray(d)?d:[]);
+    } catch(e){ setCasesE(e.message); }
     setCasesL(false);
   },[]);
 
@@ -562,7 +588,12 @@ export default function App() {
               ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(5,68)}</div>
               : <div className="fin">
                   {votes.length===0&&!votesError&&selectedRep&&<div style={{color:"#666",fontSize:13}}>No vote records returned.</div>}
-                  {votes.map((v,i)=><VoteRow key={i} vote={v} onVote={handleVote}/>)}
+                  {votes.map((v) => {
+                    const voteKey = v.bill
+                      ? `${v.bill.type || "bill"}-${v.bill.number || "unknown"}`
+                      : `${v.rollNumber || "roll"}-${v.date || "unknown"}`;
+                    return <VoteRow key={voteKey} vote={v} onVote={handleVote} />;
+                  })}
                 </div>
             }
           </div>
@@ -685,7 +716,7 @@ export default function App() {
           </div>
         )}
 
-      </main>
+      </div>
 
       <footer style={{borderTop:"1px solid rgba(255,255,255,0.05)",padding:"20px 24px",textAlign:"center",
         color:"#2a2a2a",fontSize:10,fontFamily:"'DM Mono',monospace",letterSpacing:"0.05em",lineHeight:1.9}}>

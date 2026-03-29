@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────
-// This is your Rails server. No API keys live here — they're safe in .env on the server.
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const API_BASE = "/api";
 
 async function apiGet(path, params = {}) {
-  const url = new URL(`${API_BASE}${path}`);
+  const url = new URL(`${API_BASE}${path}`, window.location.origin);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
-  return data;
+  return data;}
+
+async function directGet(url, params = {}) {
+  const u = new URL(url);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  const res = await fetch(u);
+  if (!res.ok) throw new Error(`Error ${res.status}`);
+  return res.json();
 }
 
 async function apiPost(path, body = {}) {
@@ -363,7 +369,7 @@ export default function App() {
     if(!id) return;
     setVL(true); setVE(null); setVotes([]);
     try {
-      const data = await apiGet(`/votes/${id}`,{limit:20});
+      const data = await apiGet("/votes",{bioguide_id:id,limit:20});
       setVotes(data.votes||[]);
     } catch(e){ setVE(e.message); }
     setVL(false);
@@ -391,7 +397,12 @@ export default function App() {
   const loadOrders = useCallback(async()=>{
     setOL(true); setOE(null);
     try {
-      const data = await apiGet("/orders",{per_page:20});
+      const data = await directGet("https://www.federalregister.gov/api/v1/documents",{
+        "conditions[type][]":"PRESDOCU",
+        "conditions[presidential_document_type][]":"executive_order",
+        per_page:20, order:"newest",
+        fields:"document_number,publication_date,title,abstract,html_url"
+      });
       setOrders(data.results||[]);
     } catch(e){ setOE(e.message); }
     setOL(false);
@@ -403,15 +414,23 @@ export default function App() {
 
   const loadJustices = useCallback(async()=>{
     setJL(true); setJE(null);
-    try { const d = await apiGet("/court/justices"); setJustices(Array.isArray(d)?d:[]); }
-    catch(e){ setJE(e.message); }
+    try {
+      const d = await directGet("https://api.oyez.org/justices");
+      const current = (Array.isArray(d)?d:[]).filter(j=>{
+        const r=(j.roles||[]).filter(r=>r.institution_name?.includes("Supreme Court")).at(-1);
+        return r&&r.end_date===null;
+      });
+      setJustices(current);
+    } catch(e){ setJE(e.message); }
     setJL(false);
   },[]);
 
   const loadCases = useCallback(async(term)=>{
     setCasesL(true); setCasesE(null); setCases([]);
-    try { const d = await apiGet("/court/cases",{term}); setCases(Array.isArray(d)?d:[]); }
-    catch(e){ setCasesE(e.message); }
+    try {
+      const d = await directGet("https://api.oyez.org/cases",{filter:`term:${term}`,per_page:20});
+      setCases(Array.isArray(d)?d:[]);
+    } catch(e){ setCasesE(e.message); }
     setCasesL(false);
   },[]);
 
