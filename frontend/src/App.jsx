@@ -479,12 +479,7 @@ export default function App() {
   const loadOrders = useCallback(async()=>{
     setOL(true); setOE(null);
     try {
-      const data = await directGet("https://www.federalregister.gov/api/v1/documents",{
-        "conditions[type][]":"PRESDOCU",
-        "conditions[presidential_document_type][]":"executive_order",
-        per_page:20, order:"newest",
-        fields:"document_number,publication_date,title,abstract,html_url"
-      });
+      const data = await apiGet("/orders");
       setOrders(data.results||[]);
     } catch(e){ setOE(e.message); }
     setOL(false);
