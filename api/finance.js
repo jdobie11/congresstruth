@@ -35,7 +35,7 @@ module.exports = async function handler(req, res) {
       sort: "-receipts",
     });
     const candidate = search?.results?.[0];
-    if (!candidate) return res.status(404).json({ error: `No FEC record found for ${name}` });
+    if (!candidate) return res.json({ found: false, name });
 
     const [totalsRes, sizeRes] = await Promise.all([
       fecGet(`/candidate/${candidate.candidate_id}/totals/`, { per_page: 1 }),

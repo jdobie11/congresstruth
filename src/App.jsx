@@ -755,7 +755,7 @@ export default function App() {
         + "&conditions[presidential_document_type][]=proclamation"
         + "&conditions[presidential_document_type][]=determination"
         + "&per_page=30&order=newest"
-        + "&fields=document_number,publication_date,signing_date,title,abstract,html_url,subtype,executive_order_number,presidential_document_type";
+        + "&fields=document_number,publication_date,title,abstract,html_url,type,subtype,executive_order_number";
       const r = await fetch(url);
       if (!r.ok) throw new Error(`Federal Register returned ${r.status}`);
       const data = await r.json();
@@ -793,8 +793,14 @@ export default function App() {
   const loadJustices = useCallback(async()=>{
     setJL(true); setJE(null);
     try {
-      const d = await apiGet("/scotus",{type:"justices"});
-      setJustices(Array.isArray(d)?d:[]);
+      const r = await fetch("https://api.oyez.org/justices");
+      if(!r.ok) throw new Error(`Oyez error ${r.status}`);
+      const d = await r.json();
+      const current = (Array.isArray(d)?d:[]).filter(j=>{
+        const role=(j.roles||[]).filter(r=>r.institution_name?.includes("Supreme Court")).at(-1);
+        return role&&(role.end_date===null||role.end_date===0);
+      });
+      setJustices(current);
     } catch(e){ setJE(e.message); }
     setJL(false);
   },[]);
@@ -802,7 +808,9 @@ export default function App() {
   const loadCases = useCallback(async(term)=>{
     setCasesL(true); setCasesE(null); setCases([]);
     try {
-      const d = await apiGet("/scotus",{type:"cases",term});
+      const r = await fetch(`https://api.oyez.org/cases?filter=term:${term}&per_page=20`);
+      if(!r.ok) throw new Error(`Oyez error ${r.status}`);
+      const d = await r.json();
       setCases(Array.isArray(d)?d:[]);
     } catch(e){ setCasesE(e.message); }
     setCasesL(false);
@@ -836,13 +844,14 @@ export default function App() {
     setEVL(true);
     try {
       const d = await apiGet("/votes",{bioguide_id:rep.bioguideId,limit:20});
-      setExpandedVotes(d.votes||[]);
+      if(d.error) setExpandedVotes([{_error: d.error}]);
+      else setExpandedVotes(d.votes||[]);
     } catch(e){ setExpandedVotes([{_error: e.message}]); }
     setEVL(false);
     setEFL(true);
     try {
       const d = await apiGet("/finance",{name:rep.name,state:rep.state});
-      setExpandedFin(d);
+      setExpandedFin(d.found===false ? null : d);
     } catch(e){ setExpandedFin({_error: e.message}); }
     setEFL(false);
   },[expandedRepId]);
