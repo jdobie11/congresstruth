@@ -426,8 +426,17 @@ function FinanceBar({ label, amount, max }) {
 }
 
 // ─── ORDER CARD ───────────────────────────────────────────────────────────
+const PRES_DOC_LABELS = {
+  executive_order: { label: "EXECUTIVE ORDER", color: "#ff4a4a" },
+  memorandum:      { label: "MEMORANDUM",      color: "#f97316" },
+  proclamation:    { label: "PROCLAMATION",    color: "#c084fc" },
+  determination:   { label: "DETERMINATION",  color: "#4a9eff" },
+};
 function OrderCard({ order }) {
   const [exp,setExp] = useState(false);
+  const dtype = order.presidential_document_type || order.subtype || "";
+  const badge = PRES_DOC_LABELS[dtype] || { label: dtype.toUpperCase().replace(/_/g," "), color: "#666" };
+  const eoNum = order.executive_order_number ? ` #${order.executive_order_number}` : "";
   return (
     <div onClick={()=>setExp(!exp)} style={{
       background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",
@@ -435,8 +444,13 @@ function OrderCard({ order }) {
     }}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
         <div style={{flex:1}}>
-          <div style={{fontSize:10,color:"#555",marginBottom:4,fontFamily:"'DM Mono',monospace"}}>
-            {order.document_number} · {order.publication_date}
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5,flexWrap:"wrap"}}>
+            {dtype&&<span style={{fontSize:9,fontFamily:"'DM Mono',monospace",letterSpacing:"0.06em",
+              color:badge.color,background:`${badge.color}18`,border:`1px solid ${badge.color}44`,
+              borderRadius:4,padding:"2px 6px"}}>{badge.label}{eoNum}</span>}
+            <span style={{fontSize:10,color:"#555",fontFamily:"'DM Mono',monospace"}}>
+              {order.signing_date||order.publication_date}
+            </span>
           </div>
           <div style={{fontWeight:600,fontSize:13,color:"#e0e0e0",lineHeight:1.4}}>{order.title}</div>
           {exp&&order.abstract&&(
@@ -448,6 +462,61 @@ function OrderCard({ order }) {
               style={{display:"inline-block",marginTop:8,fontSize:11,color:"#4a9eff",textDecoration:"none"}}>
               View on Federal Register →
             </a>
+          )}
+        </div>
+        <div style={{color:"#555",fontSize:12,paddingTop:2,flexShrink:0}}>{exp?"▲":"▼"}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── REGULATION CARD ──────────────────────────────────────────────────────
+function RegulationCard({ reg }) {
+  const [exp,setExp] = useState(false);
+  const isFinal    = reg.type === "RULE";
+  const isProposed = reg.type === "PRORULE";
+  const color      = isFinal ? "#00e5a0" : "#f97316";
+  const label      = isFinal ? "FINAL RULE" : "PROPOSED RULE";
+  const commentDue = reg.comments_close_on;
+  const effective  = reg.effective_on;
+  const agencies   = (reg.agency_names||[]).join(", ");
+  const today      = new Date().toISOString().slice(0,10);
+  const commentOpen = commentDue && commentDue >= today;
+  return (
+    <div onClick={()=>setExp(!exp)} style={{
+      background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",
+      borderRadius:10,padding:"13px 17px",marginBottom:8,cursor:"pointer",
+    }}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5,flexWrap:"wrap"}}>
+            <span style={{fontSize:9,fontFamily:"'DM Mono',monospace",letterSpacing:"0.06em",
+              color,background:`${color}18`,border:`1px solid ${color}44`,
+              borderRadius:4,padding:"2px 6px"}}>{label}</span>
+            {commentOpen&&<span style={{fontSize:9,fontFamily:"'DM Mono',monospace",letterSpacing:"0.06em",
+              color:"#facc15",background:"#facc1518",border:"1px solid #facc1544",
+              borderRadius:4,padding:"2px 6px"}}>COMMENT OPEN · due {commentDue}</span>}
+            <span style={{fontSize:10,color:"#555",fontFamily:"'DM Mono',monospace"}}>{reg.publication_date}</span>
+          </div>
+          <div style={{fontWeight:600,fontSize:13,color:"#e0e0e0",lineHeight:1.4}}>{reg.title}</div>
+          {agencies&&<div style={{fontSize:11,color:"#666",marginTop:3}}>{agencies}</div>}
+          {exp&&reg.abstract&&(
+            <div style={{fontSize:13,color:"#888",lineHeight:1.6,marginTop:8}}>{reg.abstract}</div>
+          )}
+          {exp&&(
+            <div style={{display:"flex",gap:16,marginTop:8,flexWrap:"wrap"}}>
+              {effective&&<span style={{fontSize:11,color:"#555"}}>Effective: <span style={{color:"#999"}}>{effective}</span></span>}
+              <a href={reg.html_url} target="_blank" rel="noreferrer"
+                onClick={e=>e.stopPropagation()}
+                style={{fontSize:11,color:"#4a9eff",textDecoration:"none"}}>
+                View on Federal Register →
+              </a>
+              {commentOpen&&<a href={`https://www.regulations.gov/search?filter=${reg.docket_id||reg.document_number}`}
+                target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                style={{fontSize:11,color:"#facc15",textDecoration:"none"}}>
+                Submit a Comment →
+              </a>}
+            </div>
           )}
         </div>
         <div style={{color:"#555",fontSize:12,paddingTop:2,flexShrink:0}}>{exp?"▲":"▼"}</div>
@@ -544,6 +613,10 @@ export default function App() {
   const [orders,setOrders]           = useState([]);
   const [ordersLoading,setOL]        = useState(false);
   const [ordersError,setOE]          = useState(null);
+  const [regs,setRegs]               = useState([]);
+  const [regsLoading,setRL]          = useState(false);
+  const [regsError,setRE]            = useState(null);
+  const [regType,setRegType]         = useState("all");
   const [justices,setJustices]         = useState([]);
   const [justicesLoading,setJL]        = useState(false);
   const [justicesError,setJE]          = useState(null);
@@ -675,15 +748,30 @@ export default function App() {
   const loadOrders = useCallback(async()=>{
     setOL(true); setOE(null);
     try {
-      const data = await apiGet("/orders");
+      const data = await apiGet("/orders",{per_page:30});
       setOrders(data.results||[]);
+      if(data.error) setOE(data.error);
     } catch(e){ setOE(e.message); }
     setOL(false);
+  },[]);
+
+  const loadRegs = useCallback(async(type)=>{
+    setRL(true); setRE(null); setRegs([]);
+    try {
+      const data = await apiGet("/regulations",{type,per_page:25});
+      setRegs(data.results||[]);
+      if(data.error) setRE(data.error);
+    } catch(e){ setRE(e.message); }
+    setRL(false);
   },[]);
 
   useEffect(()=>{
     if(tab==="orders"&&orders.length===0) loadOrders();
   },[tab,orders.length,loadOrders]);
+
+  useEffect(()=>{
+    if(tab==="regs") loadRegs(regType);
+  },[tab,regType]); // eslint-disable-line
 
   const loadJustices = useCallback(async()=>{
     setJL(true); setJE(null);
@@ -796,7 +884,8 @@ export default function App() {
           {id:"feed",label:"Bills & Votes"},
           {id:"reps",label:"Representatives"},
           {id:"finance",label:"Campaign Finance"},
-          {id:"orders",label:"Executive Orders"},
+          {id:"orders",label:"Presidential Actions"},
+          {id:"regs",label:"Regulations"},
           {id:"scotus",label:"Supreme Court"},
           {id:"cabinet",label:"Cabinet"},
         ].map(t=>(
@@ -1063,17 +1152,44 @@ export default function App() {
           </div>
         )}
 
-        {/* ORDERS */}
+        {/* PRESIDENTIAL ACTIONS */}
         {tab==="orders"&&(
           <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Executive Orders</h2>
-            <p style={{color:"#666",fontSize:13,marginBottom:18}}>Live from the Federal Register. Most recent first.</p>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Presidential Actions</h2>
+            <p style={{color:"#666",fontSize:13,marginBottom:18}}>Executive orders, memoranda, proclamations, and determinations. Source: Federal Register.</p>
             {ordersError&&<ErrorBanner msg={ordersError} onRetry={loadOrders}/>}
             {ordersLoading
               ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(5,58)}</div>
               : <div className="fin">
-                  {orders.length===0&&!ordersError&&<div style={{color:"#666",fontSize:13}}>No orders loaded.</div>}
-                  {orders.map((o,i)=><OrderCard key={i} order={o}/>)}
+                  {orders.length===0&&!ordersError&&<div style={{color:"#666",fontSize:13}}>No documents loaded.</div>}
+                  {orders.map((o,i)=><OrderCard key={o.document_number||i} order={o}/>)}
+                </div>
+            }
+          </div>
+        )}
+
+        {/* REGULATIONS */}
+        {tab==="regs"&&(
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Federal Regulations</h2>
+            <p style={{color:"#666",fontSize:13,marginBottom:14}}>Final rules and proposed rules from federal agencies. Source: Federal Register.</p>
+            <div style={{display:"flex",gap:8,marginBottom:18}}>
+              {[["all","All"],["final","Final Rules"],["proposed","Proposed Rules"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setRegType(v)}
+                  style={{fontSize:12,padding:"5px 12px",borderRadius:6,cursor:"pointer",
+                    background:regType===v?"rgba(255,255,255,0.1)":"transparent",
+                    border:`1px solid ${regType===v?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.08)"}`,
+                    color:regType===v?"#fff":"#666"}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {regsError&&<ErrorBanner msg={regsError} onRetry={()=>loadRegs(regType)}/>}
+            {regsLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:8}}>{skeletons(6,68)}</div>
+              : <div className="fin">
+                  {regs.length===0&&!regsError&&<div style={{color:"#666",fontSize:13}}>No regulations loaded.</div>}
+                  {regs.map((r,i)=><RegulationCard key={r.document_number||i} reg={r}/>)}
                 </div>
             }
           </div>

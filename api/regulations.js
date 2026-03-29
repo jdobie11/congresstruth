@@ -2,15 +2,16 @@ module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
 
-  const { per_page = 30, page = 1 } = req.query;
+  const { type = "all", per_page = 20, page = 1 } = req.query;
+  let typeParams = "";
+  if (type === "final")    typeParams = "&conditions[type][]=RULE";
+  else if (type === "proposed") typeParams = "&conditions[type][]=PRORULE";
+  else                     typeParams = "&conditions[type][]=RULE&conditions[type][]=PRORULE";
+
   const url = "https://www.federalregister.gov/api/v1/documents"
-    + "?conditions[type][]=PRESDOCU"
-    + "&conditions[presidential_document_type][]=executive_order"
-    + "&conditions[presidential_document_type][]=memorandum"
-    + "&conditions[presidential_document_type][]=proclamation"
-    + "&conditions[presidential_document_type][]=determination"
+    + typeParams
     + `&per_page=${per_page}&page=${page}&order=newest`
-    + "&fields=document_number,publication_date,signing_date,title,abstract,html_url,subtype,executive_order_number,presidential_document_type";
+    + "&fields=document_number,publication_date,effective_on,comments_close_on,title,abstract,html_url,type,agency_names,significant,docket_id,regulation_id_numbers";
 
   try {
     const controller = new AbortController();
