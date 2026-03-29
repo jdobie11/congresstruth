@@ -193,6 +193,60 @@ const vBtn = (c)=>({
   fontFamily:"'DM Mono',monospace",fontWeight:700,cursor:"pointer",
 });
 
+// ─── BILL CARD ────────────────────────────────────────────────────────────
+function BillCard({ bill, repVote, userVote, onVote }) {
+  const billId   = `${bill.type}${bill.number}`;
+  const billLabel = `${(bill.type||"").toUpperCase()} ${bill.number}`;
+  const title    = bill.title || `${billLabel}`;
+  const action   = bill.latestAction?.text || "";
+  const date     = bill.latestAction?.actionDate || "";
+  const sponsor  = bill.sponsors?.[0]?.fullName || bill.sponsors?.[0]?.name || "";
+  const sparty   = bill.sponsors?.[0]?.party || "";
+  const match    = (userVote && repVote) ? userVote === repVote : null;
+  const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(
+    `Explain this bill in plain terms: ${billLabel} - "${title}". What does it do, who does it affect, and what are the main arguments for and against?`
+  )}`;
+  return (
+    <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+        <div style={{flex:1,minWidth:180}}>
+          <div style={{display:"flex",gap:7,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{billLabel}</span>
+            {date&&<span style={{fontSize:11,color:"#555"}}>{date}</span>}
+            {sponsor&&<span style={{fontSize:11,color:partyColor(sparty)}}>{sponsor}</span>}
+          </div>
+          <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:5}}>
+            {title.length>130?title.slice(0,130)+"…":title}
+          </div>
+          {action&&<div style={{fontSize:12,color:"#555",lineHeight:1.4,marginBottom:8}}>{action.length>110?action.slice(0,110)+"…":action}</div>}
+          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none",letterSpacing:"0.03em"}}>Ask Claude →</a>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+          {repVote&&(
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontSize:11,color:"#555"}}>Rep:</span>
+              <span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:repVote==="yea"?"#00e5a0":"#ff4a4a"}}>{repVote.toUpperCase()}</span>
+            </div>
+          )}
+          {!userVote?(
+            <div style={{display:"flex",gap:5,alignItems:"center"}}>
+              <span style={{fontSize:11,color:"#555"}}>You:</span>
+              <button onClick={()=>onVote(billId,"yea")} style={vBtn("#00e5a0")}>YEA</button>
+              <button onClick={()=>onVote(billId,"nay")} style={vBtn("#ff4a4a")}>NAY</button>
+            </div>
+          ):(
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {match!==null&&<span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:match?"#00e5a0":"#ff4a4a"}}>{match?"✓ ALIGNED":"✗ DIVERGED"}</span>}
+              <span style={{fontSize:12,color:userVote==="yea"?"#00e5a0":"#ff4a4a",fontFamily:"'DM Mono',monospace"}}>You: {userVote.toUpperCase()}</span>
+              <button onClick={()=>onVote(billId,null)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── FINANCE BAR ──────────────────────────────────────────────────────────
 function FinanceBar({ label, amount, max }) {
   return (
@@ -304,8 +358,8 @@ function CabinetCard({ nomination }) {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [tab,setTab]                 = useState("reps");
-  const [stateInput,setStateInput]   = useState("NH");
+  const [tab,setTab]                 = useState("feed");
+  const [stateInput,setStateInput]   = useState("");
   const [state,setState]             = useState("NH");
   const [members,setMembers]         = useState([]);
   const [membersLoading,setML]       = useState(false);
@@ -330,15 +384,20 @@ export default function App() {
   const [cabinet,setCabinet]           = useState([]);
   const [cabinetLoading,setCabL]       = useState(false);
   const [cabinetError,setCabE]         = useState(null);
+  const [bills,setBills]               = useState([]);
+  const [billsLoading,setBillsL]       = useState(false);
+  const [billsError,setBillsE]         = useState(null);
+  const [userVotes,setUserVotes]       = useState({});
+  const [repVotesMap,setRepVotesMap]   = useState({});
   const [loaded,setLoaded]             = useState(false);
-  const [aligned,setAligned]           = useState(0);
-  const [diverged,setDiverged]         = useState(0);
   const [copied,setCopied]             = useState(false);
 
   useEffect(()=>{setTimeout(()=>setLoaded(true),80);},[]);
 
-  const alignScore = aligned+diverged===0 ? null
-    : Math.round((aligned/(aligned+diverged))*100);
+  const votedBillIds  = Object.keys(userVotes);
+  const matchedIds    = votedBillIds.filter(id=>repVotesMap[id]);
+  const alignedCount  = matchedIds.filter(id=>userVotes[id]===repVotesMap[id]).length;
+  const alignScore    = matchedIds.length===0 ? null : Math.round((alignedCount/matchedIds.length)*100);
 
   const copyAlignment = () => {
     if (alignScore===null||!selectedRep) return;
@@ -348,12 +407,27 @@ export default function App() {
     setTimeout(()=>setCopied(false),2000);
   };
 
-  const handleVote = useCallback((userV,repV)=>{
-    if(userV===repV) setAligned(a=>a+1); else setDiverged(d=>d+1);
+  const handleBillVote = useCallback((billId, vote) => {
+    setUserVotes(prev => {
+      if (vote===null) { const n={...prev}; delete n[billId]; return n; }
+      return {...prev,[billId]:vote};
+    });
   },[]);
+
+  const loadBills = useCallback(async()=>{
+    setBillsL(true); setBillsE(null);
+    try {
+      const data = await apiGet("/bills",{limit:20});
+      setBills(data.bills||[]);
+    } catch(e){ setBillsE(e.message); }
+    setBillsL(false);
+  },[]);
+
+  useEffect(()=>{ loadBills(); },[loadBills]);
 
   const loadMembers = useCallback(async(st)=>{
     setML(true); setME(null); setMembers([]); setSelectedRep(null);
+    setRepVotesMap({}); setUserVotes({});
     try {
       const data = await apiGet("/members",{state:st,limit:10});
       const list = data.members||[];
@@ -363,14 +437,22 @@ export default function App() {
     setML(false);
   },[]);
 
-  useEffect(()=>{ loadMembers("NH"); },[loadMembers]);
-
   const loadVotes = useCallback(async(id)=>{
     if(!id) return;
     setVL(true); setVE(null); setVotes([]);
     try {
       const data = await apiGet("/votes",{bioguide_id:id,limit:20});
-      setVotes(data.votes||[]);
+      const list = data.votes||[];
+      setVotes(list);
+      const map={};
+      list.forEach(v=>{
+        if(v.bill?.type&&v.bill?.number){
+          const key=`${v.bill.type}${v.bill.number}`;
+          const pos=v.memberVotes?.votePosition||"";
+          map[key]=["Yes","Yea","Aye"].includes(pos)?"yea":"nay";
+        }
+      });
+      setRepVotesMap(map);
     } catch(e){ setVE(e.message); }
     setVL(false);
   },[]);
@@ -447,7 +529,7 @@ export default function App() {
 
   const search = ()=>{
     const st = stateInput.toUpperCase().trim();
-    if(st.length===2){ setState(st); loadMembers(st); setAligned(0); setDiverged(0); }
+    if(st.length===2){ setState(st); loadMembers(st); }
   };
 
   const skeletons = (n,h)=>[...Array(n)].map((_,i)=><Skeleton key={i} height={h}/>);
@@ -483,32 +565,21 @@ export default function App() {
             NO ADS · OPEN DATA
           </span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:"#666"}}>State</span>
-          <input value={stateInput}
-            onChange={e=>setStateInput(e.target.value.toUpperCase().slice(0,2))}
-            onKeyDown={e=>e.key==="Enter"&&search()}
-            style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",
-              borderRadius:6,padding:"5px 8px",color:"#fff",fontSize:13,
-              fontFamily:"'DM Mono',monospace",width:44,textAlign:"center",outline:"none"}}/>
-          <button onClick={search} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",
-            borderRadius:6,padding:"5px 10px",color:"#ccc",fontSize:12,cursor:"pointer"}}>Go</button>
-          {alignScore!==null&&(
-            <button onClick={copyAlignment} title="Click to copy shareable score" style={{
-              fontSize:11,color:copied?"#fff":"#00e5a0",cursor:"pointer",
-              background:copied?"rgba(0,229,160,0.2)":"rgba(0,229,160,0.1)",
-              border:`1px solid ${copied?"rgba(0,229,160,0.4)":"rgba(0,229,160,0.2)"}`,
-              borderRadius:20,padding:"3px 10px",fontFamily:"'DM Mono',monospace",transition:"all 0.2s",
-            }}>{copied ? "Copied!" : `Alignment ${alignScore}%`}</button>
-          )}
-        </div>
+        {alignScore!==null&&(
+          <button onClick={copyAlignment} title="Click to copy shareable score" style={{
+            fontSize:11,color:copied?"#fff":"#00e5a0",cursor:"pointer",
+            background:copied?"rgba(0,229,160,0.2)":"rgba(0,229,160,0.1)",
+            border:`1px solid ${copied?"rgba(0,229,160,0.4)":"rgba(0,229,160,0.2)"}`,
+            borderRadius:20,padding:"4px 12px",fontFamily:"'DM Mono',monospace",transition:"all 0.2s",
+          }}>{copied ? "Copied!" : `Alignment ${alignScore}%`}</button>
+        )}
       </header>
 
       {/* Tabs */}
       <div style={{display:"flex",padding:"0 24px",overflowX:"auto",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
         {[
+          {id:"feed",label:"Bills & Votes"},
           {id:"reps",label:"Representatives"},
-          {id:"votes",label:"Voting Record"},
           {id:"finance",label:"Campaign Finance"},
           {id:"orders",label:"Executive Orders"},
           {id:"scotus",label:"Supreme Court"},
@@ -526,11 +597,67 @@ export default function App() {
       <main style={{maxWidth:820,margin:"0 auto",padding:"26px 24px"}}>
 
         {/* REPS */}
+        {/* FEED */}
+        {tab==="feed"&&(
+          <div>
+            {/* Rep Tracker Card */}
+            <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:14,padding:"16px 20px",marginBottom:22}}>
+              <div style={{fontSize:10,color:"#555",letterSpacing:"0.08em",marginBottom:8}}>TRACK YOUR REP</div>
+              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <input value={stateInput}
+                  onChange={e=>setStateInput(e.target.value.toUpperCase().slice(0,2))}
+                  onKeyDown={e=>e.key==="Enter"&&search()}
+                  placeholder="State (e.g. CA)"
+                  style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",
+                    borderRadius:8,padding:"8px 12px",color:"#fff",fontSize:13,
+                    fontFamily:"'DM Mono',monospace",width:140,outline:"none"}}/>
+                <button onClick={search} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.14)",
+                  borderRadius:8,padding:"8px 18px",color:"#ccc",fontSize:13,cursor:"pointer"}}>Find My Rep</button>
+                {membersLoading&&<span style={{fontSize:12,color:"#555"}}>Loading…</span>}
+                {membersError&&<span style={{fontSize:12,color:"#ff4a4a"}}>{membersError}</span>}
+                {selectedRep&&!membersLoading&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",background:"rgba(255,255,255,0.04)",borderRadius:8,border:"1px solid rgba(255,255,255,0.08)"}}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:`${partyColor(selectedRep.partyName?.[0])}22`,border:`1.5px solid ${partyColor(selectedRep.partyName?.[0])}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:partyColor(selectedRep.partyName?.[0]),fontFamily:"'DM Mono',monospace"}}>
+                      {(selectedRep.name||"").split(",").reverse().join(" ").trim().split(" ").map(w=>w[0]).filter(Boolean).join("").slice(0,2).toUpperCase()||"??"}
+                    </div>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:"#f0f0f0"}}>{selectedRep.name}</div>
+                      <div style={{fontSize:11,color:"#666"}}>{partyLabel(selectedRep.partyName?.[0])} · {selectedRep.state}</div>
+                    </div>
+                    {alignScore!==null&&<AlignmentRing score={alignScore} size={44}/>}
+                  </div>
+                )}
+                {members.length>1&&!membersLoading&&(
+                  <select onChange={e=>{const r=members.find(m=>m.bioguideId===e.target.value);if(r)setSelectedRep(r);}} value={selectedRep?.bioguideId||""} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#ccc",fontSize:12,padding:"6px 10px",outline:"none",cursor:"pointer"}}>
+                    {members.map(m=><option key={m.bioguideId} value={m.bioguideId}>{m.name}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:14}}>
+              <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff"}}>Recent Bills</h2>
+              <span style={{fontSize:12,color:"#444"}}>Vote YES or NO · compare with your rep</span>
+            </div>
+            {billsError&&<ErrorBanner msg={billsError} onRetry={loadBills}/>}
+            {billsLoading
+              ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(8,90)}</div>
+              : <div className="fin">
+                  {bills.length===0&&!billsError&&<div style={{color:"#666",fontSize:13}}>No bills loaded.</div>}
+                  {bills.map(bill=>{
+                    const billId=`${bill.type}${bill.number}`;
+                    return <BillCard key={billId} bill={bill} repVote={repVotesMap[billId]} userVote={userVotes[billId]} onVote={handleBillVote}/>;
+                  })}
+                </div>
+            }
+          </div>
+        )}
+
         {tab==="reps"&&(
           <div>
             <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Representatives</h2>
             <p style={{color:"#666",fontSize:13,marginBottom:18}}>
-              Current members for <strong style={{color:"#aaa"}}>{state}</strong>. Alignment score appears once you cast votes.
+              Current members for <strong style={{color:"#aaa"}}>{state}</strong>. Search your state on the Bills tab to compare votes.
             </p>
             {membersError&&<ErrorBanner msg={membersError} onRetry={()=>loadMembers(state)}/>}
             {membersLoading
@@ -572,30 +699,6 @@ export default function App() {
                 )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* VOTES */}
-        {tab==="votes"&&(
-          <div>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,color:"#fff",marginBottom:4}}>Voting Record</h2>
-            <p style={{color:"#666",fontSize:13,marginBottom:18}}>
-              Recent votes by <strong style={{color:"#aaa"}}>{selectedRep?.name||"select a rep first"}</strong>. Vote to track your alignment.
-            </p>
-            {!selectedRep&&<div style={{color:"#666",fontSize:13}}>← Select a representative first.</div>}
-            {votesError&&<ErrorBanner msg={votesError} onRetry={()=>loadVotes(selectedRep?.bioguideId)}/>}
-            {votesLoading
-              ? <div style={{display:"flex",flexDirection:"column",gap:10}}>{skeletons(5,68)}</div>
-              : <div className="fin">
-                  {votes.length===0&&!votesError&&selectedRep&&<div style={{color:"#666",fontSize:13}}>No vote records returned.</div>}
-                  {votes.map((v) => {
-                    const voteKey = v.bill
-                      ? `${v.bill.type || "bill"}-${v.bill.number || "unknown"}`
-                      : `${v.rollNumber || "roll"}-${v.date || "unknown"}`;
-                    return <VoteRow key={voteKey} vote={v} onVote={handleVote} />;
-                  })}
-                </div>
-            }
           </div>
         )}
 
