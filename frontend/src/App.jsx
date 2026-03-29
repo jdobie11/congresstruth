@@ -208,52 +208,86 @@ const vBtn = (c)=>({
 
 // ─── LIVE VOTE CARD ───────────────────────────────────────────────────────
 function LiveVoteCard({ vote, userVote, onVote }) {
+  const [community, setCommunity] = useState(null);
   const voteId  = `live-${vote.chamber}-${vote.roll}`;
+  const revealed = !!userVote;
   const passed  = /passed|agreed|confirmed|adopted/i.test(vote.result||"");
   const failed  = /failed|rejected|not agreed/i.test(vote.result||"");
   const status  = passed ? {label:"PASSED",color:"#00e5a0"} : failed ? {label:"FAILED",color:"#ff4a4a"} : vote.result ? {label:(vote.result).toUpperCase(),color:"#ffd84a"} : null;
   const title   = vote.title || vote.question || "—";
   const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(
-    `Explain this congressional vote in plain terms: ${vote.bill||""} - "${title}". What was being decided, what does it mean, and what are the arguments for and against?`
+    `Explain this vote in plain terms: ${vote.bill||""} "${title}". What was being decided and what are the arguments for and against?`
   )}`;
+  const handleVote = async (id, v) => {
+    onVote(id, v);
+    if (v) {
+      try { const d = await apiPost("/vote-user",{voteId:id,vote:v}); setCommunity(d); } catch(_){}
+    }
+  };
+  const userPct = community?.total>0 ? Math.round((community.yea/community.total)*100) : null;
   return (
-    <div style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",marginBottom:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
-        <div style={{flex:1,minWidth:180}}>
-          <div style={{display:"flex",gap:7,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-            {vote.bill&&<span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{vote.bill}</span>}
-            <span style={{fontSize:10,color:vote.chamber==="Senate"?"#4a9eff":"#c084fc",background:vote.chamber==="Senate"?"rgba(74,158,255,0.1)":"rgba(192,132,252,0.1)",border:`1px solid ${vote.chamber==="Senate"?"rgba(74,158,255,0.3)":"rgba(192,132,252,0.3)"}`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace"}}>{vote.chamber}</span>
-            {vote.date&&<span style={{fontSize:11,color:"#555"}}>{vote.date}</span>}
-            {status&&<span style={{fontSize:10,color:status.color,background:`${status.color}18`,border:`1px solid ${status.color}44`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace"}}>{status.label}</span>}
-          </div>
-          <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:4}}>
-            {title.length>130?title.slice(0,130)+"…":title}
-          </div>
-          {vote.question&&vote.title&&<div style={{fontSize:12,color:"#555",lineHeight:1.4,marginBottom:8}}>{vote.question.length>100?vote.question.slice(0,100)+"…":vote.question}</div>}
-          {(vote.yea>0||vote.nay>0)&&(
-            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-              <VoteBubble label="YEA" count={vote.yea} color="#00e5a0"/>
-              <VoteBubble label="NAY" count={vote.nay} color="#ff4a4a"/>
-              {vote.notVoting>0&&<VoteBubble label="NOT VOTING" count={vote.notVoting} color="#555"/>}
-            </div>
-          )}
-          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Ask Claude →</a>
+    <div style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${revealed?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.07)"}`,borderRadius:12,padding:"16px 18px",marginBottom:10,transition:"border 0.3s"}}>
+      {/* Bill info — NO partisan signals before vote */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",gap:7,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+          {vote.bill&&<span style={{fontSize:10,background:"rgba(255,255,255,0.07)",color:"#999",padding:"2px 7px",borderRadius:4,fontFamily:"'DM Mono',monospace"}}>{vote.bill}</span>}
+          <span style={{fontSize:10,color:vote.chamber==="Senate"?"#4a9eff":"#c084fc",background:vote.chamber==="Senate"?"rgba(74,158,255,0.1)":"rgba(192,132,252,0.1)",border:`1px solid ${vote.chamber==="Senate"?"rgba(74,158,255,0.3)":"rgba(192,132,252,0.3)"}`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace"}}>{vote.chamber}</span>
+          {vote.date&&<span style={{fontSize:11,color:"#555"}}>{vote.date}</span>}
+          {revealed&&status&&<span style={{fontSize:10,color:status.color,background:`${status.color}18`,border:`1px solid ${status.color}44`,borderRadius:4,padding:"1px 6px",fontFamily:"'DM Mono',monospace",animation:"fadeUp 0.4s"}}>{status.label}</span>}
         </div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-          {!userVote?(
-            <div style={{display:"flex",gap:5,alignItems:"center"}}>
-              <span style={{fontSize:11,color:"#555"}}>You:</span>
-              <button onClick={()=>onVote(voteId,"yea")} style={vBtn("#00e5a0")}>YEA</button>
-              <button onClick={()=>onVote(voteId,"nay")} style={vBtn("#ff4a4a")}>NAY</button>
-            </div>
-          ):(
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{fontSize:12,color:userVote==="yea"?"#00e5a0":"#ff4a4a",fontFamily:"'DM Mono',monospace"}}>You: {userVote.toUpperCase()}</span>
-              <button onClick={()=>onVote(voteId,null)} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
-            </div>
-          )}
+        <div style={{fontWeight:600,fontSize:14,color:"#fff",lineHeight:1.4,marginBottom:4}}>
+          {title.length>140?title.slice(0,140)+"…":title}
         </div>
+        {vote.question&&vote.title&&<div style={{fontSize:12,color:"#666",marginTop:4}}>{vote.question.length>120?vote.question.slice(0,120)+"…":vote.question}</div>}
       </div>
+      {/* Pre-vote nudge */}
+      {!revealed&&<div style={{fontSize:12,color:"#444",marginBottom:10,fontStyle:"italic"}}>Vote first — results hidden until you do ↓</div>}
+      {/* Voting controls */}
+      {!userVote?(
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={()=>handleVote(voteId,"yea")} style={{...vBtn("#00e5a0"),padding:"7px 20px",fontSize:13}}>YEA</button>
+          <button onClick={()=>handleVote(voteId,"nay")} style={{...vBtn("#ff4a4a"),padding:"7px 20px",fontSize:13}}>NAY</button>
+          <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none",marginLeft:2}}>Not sure? Ask Claude →</a>
+        </div>
+      ):(
+        <div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px",textAlign:"center",minWidth:80}}>
+              <div style={{fontSize:9,color:"#555",letterSpacing:"0.07em",marginBottom:4}}>YOUR VOTE</div>
+              <div style={{fontSize:16,fontWeight:700,fontFamily:"'DM Mono',monospace",color:userVote==="yea"?"#00e5a0":"#ff4a4a"}}>{userVote.toUpperCase()}</div>
+            </div>
+            {(vote.yea>0||vote.nay>0)&&(
+              <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px"}}>
+                <div style={{fontSize:9,color:"#555",letterSpacing:"0.07em",marginBottom:6}}>CONGRESS</div>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{textAlign:"center"}}><div style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#00e5a0"}}>{vote.yea}</div><div style={{fontSize:9,color:"#555"}}>YEA</div></div>
+                  <div style={{textAlign:"center"}}><div style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#ff4a4a"}}>{vote.nay}</div><div style={{fontSize:9,color:"#555"}}>NAY</div></div>
+                  {vote.notVoting>0&&<div style={{textAlign:"center"}}><div style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#555"}}>{vote.notVoting}</div><div style={{fontSize:9,color:"#555"}}>ABSENT</div></div>}
+                </div>
+              </div>
+            )}
+            {community?.total>0&&(
+              <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px"}}>
+                <div style={{fontSize:9,color:"#555",letterSpacing:"0.07em",marginBottom:6}}>USERS ({community.total})</div>
+                <div style={{display:"flex",gap:8,alignItems:"baseline"}}>
+                  <span style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#00e5a0"}}>{userPct}%</span>
+                  <span style={{fontSize:11,color:"#555"}}>YEA</span>
+                  <span style={{fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#ff4a4a"}}>{100-userPct}%</span>
+                  <span style={{fontSize:11,color:"#555"}}>NAY</span>
+                </div>
+              </div>
+            )}
+          </div>
+          {vote.yea>0&&vote.nay>0&&(()=>{
+            const aligned=(userVote==="yea")===(vote.yea>vote.nay);
+            return <div style={{fontSize:12,color:aligned?"#00e5a0":"#ff4a4a",marginBottom:8}}>{aligned?"✓ You voted with the congressional majority":"✗ You voted against the congressional majority"}</div>;
+          })()}
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <button onClick={()=>{onVote(voteId,null);setCommunity(null);}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11}}>reset</button>
+            <a href={claudeUrl} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#4a9eff",textDecoration:"none"}}>Ask Claude →</a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
