@@ -751,7 +751,7 @@ export default function App() {
       const url = "https://www.federalregister.gov/api/v1/documents"
         + "?conditions[type][]=PRESDOCU"
         + "&per_page=30&order=newest"
-        + "&fields=document_number,publication_date,title,abstract,html_url,type,subtype,executive_order_number";
+        + "&fields=document_number,publication_date,title,abstract,html_url,type,subtype";
       const r = await fetch(url);
       if (!r.ok) throw new Error(`Federal Register returned ${r.status}`);
       const data = await r.json();
@@ -840,8 +840,7 @@ export default function App() {
     setEVL(true);
     try {
       const d = await apiGet("/votes",{bioguide_id:rep.bioguideId,limit:20});
-      if(d.error) setExpandedVotes([{_error: d.error}]);
-      else setExpandedVotes(d.votes||[]);
+      setExpandedVotes(d.sponsoredLegislation||[]);
     } catch(e){ setExpandedVotes([{_error: e.message}]); }
     setEVL(false);
     setEFL(true);
@@ -1077,22 +1076,22 @@ export default function App() {
                                 </button>
                                 {rep.url&&<a href={rep.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"#4a9eff",textDecoration:"none",padding:"5px 0"}}>Congress.gov profile →</a>}
                               </div>
-                              {/* Votes */}
-                              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>LAST 20 VOTES</div>
+                              {/* Sponsored Legislation */}
+                              <div style={{fontSize:10,color:"#555",letterSpacing:"0.07em",marginBottom:8}}>SPONSORED LEGISLATION</div>
                               {expandedVotesL&&<Skeleton height={48}/>}
-                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No vote records yet in Congress.gov.</div>}
-                              {expandedVotes.filter(v=>!v._error).slice(0,20).map((v,i)=>{
-                                const pos=v.memberVotes?.votePosition||"—";
-                                const isYea=["Yes","Yea","Aye"].includes(pos);
-                                const label=v.bill?`${(v.bill.type||"").toUpperCase()} ${v.bill.number}`:`Roll #${v.rollNumber||"?"}`;
-                                const title=v.bill?.title||v.description||"—";
+                              {!expandedVotesL&&expandedVotes.length===0&&<div style={{fontSize:12,color:"#555",marginBottom:10}}>No sponsored legislation found.</div>}
+                              {expandedVotes.slice(0,20).map((b,i)=>{
+                                const type=(b.type||"").toUpperCase();
+                                const num=b.number||"";
+                                const title=b.title||"—";
+                                const status=b.latestAction?.text||"";
                                 return (
-                                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-                                    <div style={{flex:1,minWidth:0}}>
-                                      <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",color:"#888",padding:"1px 6px",borderRadius:3,fontFamily:"'DM Mono',monospace",marginRight:6}}>{label}</span>
-                                      <span style={{fontSize:12,color:"#999"}}>{title.length>80?title.slice(0,80)+"…":title}</span>
+                                  <div key={i} style={{padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                                    <div style={{display:"flex",gap:8,alignItems:"baseline",flexWrap:"wrap"}}>
+                                      <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",color:"#888",padding:"1px 6px",borderRadius:3,fontFamily:"'DM Mono',monospace",flexShrink:0}}>{type} {num}</span>
+                                      <span style={{fontSize:12,color:"#ccc",lineHeight:1.4}}>{title}</span>
                                     </div>
-                                    <span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",flexShrink:0,color:pos==="—"?"#555":isYea?"#00e5a0":"#ff4a4a"}}>{pos}</span>
+                                    {status&&<div style={{fontSize:11,color:"#555",marginTop:3,paddingLeft:2}}>{status}</div>}
                                   </div>
                                 );
                               })}
